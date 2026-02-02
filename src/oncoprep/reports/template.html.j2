@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>OncoPrep Report</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 24px; }
+      header { margin-bottom: 24px; }
+      .card { border: 1px solid #ddd; padding: 16px; border-radius: 8px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>OncoPrep Processing Report</h1>
+      <p>Pipeline: {{ pipeline_name }}</p>
+    </header>
+    <div class="card">
+      <p><strong>BIDS root:</strong> {{ bids_root }}</p>
+      <p><strong>Derivatives root:</strong> {{ derivatives_root }}</p>
+      <p><strong>Subject:</strong> {{ subject_id or 'all' }}</p>
+    </div>
+    <section>
+      <h2>Quality Notes</h2>
+      <ul>
+        <li>Sequence missingness checks should be listed here.</li>
+        <li>Vendor harmonization summary should be listed here.</li>
+        <li>Defacing status should be listed here.</li>
+      </ul>
+    </section>
+  </body>
+</html>
