@@ -50,7 +50,7 @@ dev = [
 
 [project.scripts]
 oncoprep = "oncoprep.cli:main"
-oncoprep-dicom = "oncoprep.dicom_cli:main"
+oncoprep-convert = "oncoprep.dicom_cli:main"
 # Legacy aliases (deprecated, use oncoprep-dicom instead)
 oncoprep-conversion = "oncoprep.dicom_cli:main"
 oncoprep-batch = "oncoprep.dicom_cli:main"
