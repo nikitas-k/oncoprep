@@ -1,6 +1,4 @@
 # oncoprep
-A toolbox for analysing neuro-oncology MRI
-
 A toolbox for analyzing neuro-oncology MRI using standardized, reproducible pipelines. The toolbox is centered on Nipype workflows, with BraTS-style preprocessing and tumor segmentation, plus utilities for DICOM→BIDS conversion, BIDS Apps execution, and report generation.
 
 ## Scope
