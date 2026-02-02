@@ -22,16 +22,22 @@ A toolbox for analyzing neuro-oncology MRI using standardized, reproducible pipe
 pip install oncoprep
 ```
 
-Run DICOM->BIDS conversion with dcm2niix and BIDScoin:
+Run DICOM->BIDS conversion with dcm2niix:
 
 ```bash
-oncoprep bids-convert /path/to/dicom /path/to/bids --backend dcm2niix --mapping mapping.txt
+oncoprep-convert /path/to/dicoms /path/to/bids
+```
+
+Run preprocessing pipeline
+
+```bash
+oncoprep /path/to/bids /path/to/derivatives participant --participant-label sub-001
 ```
 
 Generate a report stub:
 
 ```bash
-oncoprep report --bids-root /path/to/bids --output-dir /path/to/derivatives/reports
+oncoprep /path/to/bids /path/to/derivatives participant --participant-label sub-001 --reports-only
 ```
 
 ## Development
