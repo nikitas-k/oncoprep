@@ -193,6 +193,9 @@ def get_anatomical_files(
     Queries BIDS layout for anatomical images (T1w, T2w, FLAIR, etc.).
     Returns a dictionary with available modalities and their file paths.
 
+    For T1ce (contrast-enhanced T1w), uses the BIDS ce (ceagent) entity
+    (e.g., sub-01_ce-gadolinium_T1w.nii.gz).
+
     Parameters
     ----------
     layout : BIDSLayout
@@ -202,7 +205,8 @@ def get_anatomical_files(
     session : str, optional
         Session identifier (with or without 'ses-' prefix)
     modalities : list of str, optional
-        Specific modalities to query. Default: ['T1w', 'T2w', 'FLAIR']
+        Specific modalities to query. Default: ['T1w', 'T1ce', 'T2w', 'FLAIR']
+        Note: 'T1ce' queries T1w files WITH ceagent entity
 
     Returns
     -------
@@ -211,8 +215,10 @@ def get_anatomical_files(
         Example: {'T1w': ['/path/sub-01/anat/sub-01_T1w.nii.gz'], ...}
 
     """
+    from bids.layout import Query
+    
     if modalities is None:
-        modalities = ['T1w', 'T2w', 'FLAIR']
+        modalities = ['T1w', 'T1ce', 'T2w', 'FLAIR']
 
     # Remove prefix if present
     subject = subject.replace('sub-', '')
@@ -221,14 +227,37 @@ def get_anatomical_files(
 
     anat_files = {}
     for modality in modalities:
-        files = layout.get(
-            subject=subject,
-            session=session,
-            datatype='anat',
-            suffix=modality,
-            extension='.nii.gz',
-            return_type='filename',
-        )
+        # Special handling for T1ce: use ceagent entity
+        if modality == 'T1ce':
+            files = layout.get(
+                subject=subject,
+                session=session,
+                datatype='anat',
+                suffix='T1w',
+                ceagent=Query.REQUIRED,
+                extension='.nii.gz',
+                return_type='filename',
+            )
+        elif modality == 'T1w':
+            # Exclude T1w files with ceagent (those are T1ce)
+            files = layout.get(
+                subject=subject,
+                session=session,
+                datatype='anat',
+                suffix='T1w',
+                ceagent=Query.NONE,
+                extension='.nii.gz',
+                return_type='filename',
+            )
+        else:
+            files = layout.get(
+                subject=subject,
+                session=session,
+                datatype='anat',
+                suffix=modality,
+                extension='.nii.gz',
+                return_type='filename',
+            )
         if files:
             anat_files[modality] = sorted(files)
 
@@ -370,6 +399,66 @@ def get_subjects_sessions(
     return subjects, sessions
 
 
+# Custom Nipype interfaces for OncoPrep BIDS handling
+from nipype.interfaces.base import (
+    BaseInterfaceInputSpec,
+    DynamicTraitedSpec,
+    SimpleInterface,
+    TraitedSpec,
+    traits,
+    isdefined,
+    File,
+    InputMultiObject,
+)
+
+
+class _OncoprepBIDSDataGrabberInputSpec(BaseInterfaceInputSpec):
+    """Input specification for OncoPrep BIDS data grabber."""
+    subject_data = traits.Dict(desc='BIDS subject data dictionary')
+    subject_id = traits.Str(desc='Subject identifier')
+
+
+class _OncoprepBIDSDataGrabberOutputSpec(DynamicTraitedSpec):
+    """Output specification for OncoPrep BIDS data grabber."""
+    out_dict = traits.Dict(desc='Output data dictionary')
+    t1w = InputMultiObject(File(exists=True), desc='T1-weighted images')
+    t2w = InputMultiObject(File(exists=True), desc='T2-weighted images')
+    t1ce = InputMultiObject(File(exists=True), desc='T1 contrast-enhanced images')
+    flair = InputMultiObject(File(exists=True), desc='FLAIR images')
+    bold = InputMultiObject(File(exists=True), desc='BOLD images')
+    fmap = InputMultiObject(traits.Any, desc='Fieldmap data')
+    roi = InputMultiObject(File(exists=True), desc='ROI mask images')
+    dwi = InputMultiObject(File(exists=True), desc='Diffusion-weighted images')
+
+
+class OncoprepBIDSDataGrabber(SimpleInterface):
+    """
+    Custom BIDS data grabber for OncoPrep that includes t1ce and flair.
+
+    This extends the standard BIDSDataGrabber to include contrast-enhanced
+    T1-weighted (t1ce) and FLAIR modalities commonly used in neuro-oncology.
+
+    """
+
+    input_spec = _OncoprepBIDSDataGrabberInputSpec
+    output_spec = _OncoprepBIDSDataGrabberOutputSpec
+
+    def _run_interface(self, runtime):
+        """Run the interface to grab BIDS data."""
+        subject_data = self.inputs.subject_data
+        
+        # Standard modalities
+        for key in ['t1w', 't1ce', 't2w', 'flair', 'bold', 'fmap', 'roi', 'dwi']:
+            self._results[key] = subject_data.get(key, [])
+        
+        # Store full dict for reference
+        self._results['out_dict'] = {
+            **subject_data,
+        }
+        
+        return runtime
+
+
 __all__ = [
     'validate_bids_dataset',
     'collect_bids_data',
@@ -379,4 +468,5 @@ __all__ = [
     'get_subjects_sessions',
     'DICOMSeries',
     'ConversionPlan',
+    'OncoprepBIDSDataGrabber',
 ]

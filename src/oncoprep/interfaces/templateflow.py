@@ -112,6 +112,8 @@ class TemplateFlowSelect(SimpleInterface):
         self._results['t1w_file'] = files['t1w']
         self._results['brain_mask'] = files['mask']
         self._results['t2w_file'] = files['t2w']
+        self._results['t1ce_file'] = files.get('t1ce', Undefined)
+        self._results['flair_file'] = files.get('flair', Undefined)
         return runtime
 
 

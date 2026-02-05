@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
 import nibabel as nb
 
@@ -14,11 +15,87 @@ from oncoprep.utils.logging import get_logger
 
 LOGGER = get_logger(__name__)
 
+# DICOM fields containing Protected Health Information (PHI) that should be removed
+# Based on HIPAA Safe Harbor de-identification requirements
+PHI_DICOM_FIELDS = [
+    # Patient identifiers
+    'PatientName',
+    'PatientID',
+    'PatientBirthDate',
+    'PatientBirthTime',
+    'PatientSex',
+    'PatientAge',
+    'PatientWeight',
+    'PatientSize',
+    'PatientAddress',
+    'PatientTelephoneNumbers',
+    'PatientMotherBirthName',
+    'OtherPatientIDs',
+    'OtherPatientNames',
+    'EthnicGroup',
+    'PatientReligiousPreference',
+    'PatientComments',
+    'PatientState',
+    # Study identifiers
+    'StudyID',
+    'AccessionNumber',
+    'StudyDate',
+    'StudyTime',
+    'AcquisitionDate',
+    'AcquisitionTime',
+    'ContentDate',
+    'ContentTime',
+    'SeriesDate',
+    'SeriesTime',
+    'InstanceCreationDate',
+    'InstanceCreationTime',
+    # Institution identifiers
+    'InstitutionName',
+    'InstitutionAddress',
+    'InstitutionalDepartmentName',
+    'StationName',
+    # Physician identifiers
+    'ReferringPhysicianName',
+    'PerformingPhysicianName',
+    'NameOfPhysiciansReadingStudy',
+    'OperatorsName',
+    'PhysiciansOfRecord',
+    # Other identifiers
+    'RequestingPhysician',
+    'RequestAttributesSequence',
+    'DeviceSerialNumber',
+    'PlateID',
+    'CassetteID',
+    'GantryID',
+    # UIDs that could be used for re-identification
+    'StudyInstanceUID',
+    'SeriesInstanceUID',
+    'SOPInstanceUID',
+    'FrameOfReferenceUID',
+    'MediaStorageSOPInstanceUID',
+    # Private tags and comments
+    'ImageComments',
+    'AdditionalPatientHistory',
+    'RequestedProcedureDescription',
+    'PerformedProcedureStepDescription',
+]
+
+# Fields to anonymize in BIDS JSON sidecars
+PHI_BIDS_FIELDS = [
+    'InstitutionName',
+    'InstitutionAddress',
+    'InstitutionalDepartmentName',
+    'StationName',
+    'DeviceSerialNumber',
+    'PatientPosition',  # Keep but check if identifiable
+    'AcquisitionTime',
+    'StudyDescription',
+    'ProcedureStepDescription',
+]
+
 # Mapping of DICOM series descriptions to BIDS modalities
+# Note: T1CE is detected via ceagent entity, not suffix
 MODALITY_MAPPING = {
-    'T1CE': 'T1ce',
-    'T1_CE': 'T1ce',
-    'T1 CE': 'T1ce',
     'T1W': 'T1w',
     'T1': 'T1w',
     'T2W': 'T2w',
@@ -41,6 +118,234 @@ MODALITY_MAPPING = {
     'PDFS': 'PD',
 }
 
+# Keywords that indicate contrast enhancement in series descriptions
+CONTRAST_KEYWORDS = [
+    'POST', '+C', 'CONTRAST', 'GAD', 'GADOLINIUM', 'CE', 'C+',
+    'ENHANCED', 'POST-CONTRAST', 'POST_CONTRAST', 'POSTCONTRAST',
+    'T1CE', 'T1_CE', 'T1 CE', 'T1+C', 'T1C', 'T1POST',
+]
+
+
+def detect_contrast_enhancement(
+    series_name: str,
+    dicom_dir: Optional[Path] = None,
+) -> Tuple[bool, Optional[str]]:
+    """
+    Detect if a series has contrast enhancement.
+    
+    Checks both series description and DICOM metadata (ContrastBolusAgent).
+    
+    Parameters
+    ----------
+    series_name : str
+        DICOM series description or directory name
+    dicom_dir : Optional[Path]
+        Directory containing DICOM files for metadata extraction
+        
+    Returns
+    -------
+    Tuple[bool, Optional[str]]
+        (is_contrast_enhanced, contrast_agent_name)
+        contrast_agent_name is normalized for BIDS ceagent entity
+    """
+    upper_name = series_name.upper()
+    
+    # Check series description for contrast keywords
+    for keyword in CONTRAST_KEYWORDS:
+        if keyword in upper_name:
+            # Try to determine contrast agent from DICOM metadata
+            agent = _extract_contrast_agent(dicom_dir) if dicom_dir else None
+            return True, agent or 'gd'  # Default to 'gd' (gadolinium)
+    
+    # Check DICOM metadata for ContrastBolusAgent
+    if dicom_dir:
+        agent = _extract_contrast_agent(dicom_dir)
+        if agent:
+            return True, agent
+    
+    return False, None
+
+
+def _extract_contrast_agent(dicom_dir: Path) -> Optional[str]:
+    """
+    Extract contrast agent name from DICOM metadata.
+    
+    Parameters
+    ----------
+    dicom_dir : Path
+        Directory containing DICOM files
+        
+    Returns
+    -------
+    Optional[str]
+        Normalized contrast agent name for BIDS ceagent entity
+    """
+    try:
+        import pydicom
+        
+        # Find first DICOM file
+        dicom_files = sorted(dicom_dir.glob('*.dcm')) + sorted(dicom_dir.glob('*.IMA'))
+        if not dicom_files:
+            # Try files without extensions (common in some DICOM archives)
+            dicom_files = [f for f in dicom_dir.iterdir() if f.is_file() and not f.name.startswith('.')]
+        
+        if not dicom_files:
+            return None
+        
+        dcm = pydicom.dcmread(str(dicom_files[0]), stop_before_pixels=True)
+        
+        # Check ContrastBolusAgent (0018, 0010)
+        if hasattr(dcm, 'ContrastBolusAgent') and dcm.ContrastBolusAgent:
+            agent = str(dcm.ContrastBolusAgent).strip()
+            return _normalize_contrast_agent(agent)
+        
+        # Check if contrast was used from ContrastBolusVolume or Route
+        if hasattr(dcm, 'ContrastBolusVolume') and dcm.ContrastBolusVolume:
+            return 'gd'  # Assume gadolinium if contrast was given but agent not specified
+        
+        if hasattr(dcm, 'ContrastBolusRoute') and dcm.ContrastBolusRoute:
+            return 'gd'  # Assume gadolinium if contrast route specified
+            
+    except ImportError:
+        LOGGER.debug("pydicom not available for contrast agent detection")
+    except Exception as e:
+        LOGGER.debug(f"Could not extract contrast agent: {e}")
+    
+    return None
+
+
+def _normalize_contrast_agent(agent: str) -> str:
+    """
+    Normalize contrast agent name for BIDS ceagent entity.
+    
+    BIDS entity values must be alphanumeric.
+    
+    Parameters
+    ----------
+    agent : str
+        Raw contrast agent name from DICOM
+        
+    Returns
+    -------
+    str
+        Normalized agent name (alphanumeric, lowercase)
+    """
+    # Common gadolinium-based agents
+    gd_agents = [
+        'gadolinium', 'gadovist', 'dotarem', 'prohance', 'magnevist',
+        'omniscan', 'multihance', 'eovist', 'gadavist', 'clariscan',
+        'gd-dtpa', 'gd-dota', 'gd-bopta',
+    ]
+    
+    agent_lower = agent.lower()
+    
+    # Check if it's a known gadolinium agent
+    for gd_name in gd_agents:
+        if gd_name in agent_lower or agent_lower in gd_name:
+            # Use specific agent name if recognizable
+            agent_clean = re.sub(r'[^a-zA-Z0-9]', '', agent_lower)
+            if len(agent_clean) > 2:
+                return agent_clean
+            return 'gd'
+    
+    # Generic normalization: remove non-alphanumeric, lowercase
+    normalized = re.sub(r'[^a-zA-Z0-9]', '', agent).lower()
+    
+    # If result is too short or empty, default to 'gd'
+    if len(normalized) < 2:
+        return 'gd'
+    
+    return normalized
+
+
+def anonymize_bids_sidecar(json_path: Path, remove_fields: bool = True) -> None:
+    """
+    Remove PHI (Protected Health Information) from BIDS JSON sidecar.
+    
+    Parameters
+    ----------
+    json_path : Path
+        Path to BIDS JSON sidecar file
+    remove_fields : bool
+        If True, remove PHI fields entirely. If False, replace with placeholder.
+    """
+    if not json_path.exists():
+        return
+    
+    try:
+        with open(json_path, 'r') as f:
+            sidecar = json.load(f)
+        
+        modified = False
+        for field in PHI_BIDS_FIELDS:
+            if field in sidecar:
+                if remove_fields:
+                    del sidecar[field]
+                else:
+                    sidecar[field] = 'ANONYMIZED'
+                modified = True
+        
+        if modified:
+            with open(json_path, 'w') as f:
+                json.dump(sidecar, f, indent=4)
+            LOGGER.debug(f"Anonymized BIDS sidecar: {json_path.name}")
+            
+    except Exception as e:
+        LOGGER.warning(f"Could not anonymize sidecar {json_path}: {e}")
+
+
+def anonymize_dicom_series(dicom_dir: Path) -> bool:
+    """
+    Anonymize DICOM files in a directory by removing PHI fields.
+    
+    WARNING: This modifies the original DICOM files. Make a backup first.
+    
+    Parameters
+    ----------
+    dicom_dir : Path
+        Directory containing DICOM files
+        
+    Returns
+    -------
+    bool
+        True if anonymization was successful
+    """
+    try:
+        import pydicom
+        
+        dicom_files = sorted(dicom_dir.glob('*.dcm')) + sorted(dicom_dir.glob('*.IMA'))
+        if not dicom_files:
+            dicom_files = [f for f in dicom_dir.iterdir() 
+                          if f.is_file() and not f.name.startswith('.')]
+        
+        for dcm_file in dicom_files:
+            try:
+                dcm = pydicom.dcmread(str(dcm_file))
+                
+                for field in PHI_DICOM_FIELDS:
+                    if hasattr(dcm, field):
+                        delattr(dcm, field)
+                
+                # Generate new anonymous UIDs
+                dcm.StudyInstanceUID = pydicom.uid.generate_uid()
+                dcm.SeriesInstanceUID = pydicom.uid.generate_uid()
+                dcm.SOPInstanceUID = pydicom.uid.generate_uid()
+                
+                dcm.save_as(str(dcm_file))
+                
+            except Exception as e:
+                LOGGER.warning(f"Could not anonymize {dcm_file.name}: {e}")
+                
+        LOGGER.info(f"✓ Anonymized {len(dicom_files)} DICOM files in {dicom_dir.name}")
+        return True
+        
+    except ImportError:
+        LOGGER.error("pydicom not available for DICOM anonymization")
+        return False
+    except Exception as e:
+        LOGGER.error(f"DICOM anonymization failed: {e}")
+        return False
+
 
 def infer_modality_from_series(series_name: str) -> Optional[str]:
     """
@@ -53,23 +358,92 @@ def infer_modality_from_series(series_name: str) -> Optional[str]:
         
     Returns
     -------
-    Optional[str]
-        BIDS modality suffix (T1w, T2w, T1ce, FLAIR) or None
+    Tuple[str, bool, Optional[str]]
+        (BIDS modality suffix, is_contrast_enhanced, contrast_agent)
+        For contrast-enhanced T1w: returns ('T1w', True, 'gd')
     """
     upper_name = series_name.upper()
     
-    # Check for T1CE/T1 CE before T1 to avoid false matches
-    for key in ['T1CE', 'T1_CE', 'T1 CE']:
-        if key in upper_name:
-            return 'T1ce'
+    # Check for contrast enhancement first (for T1w images)
+    is_contrast, agent = detect_contrast_enhancement(series_name, dicom_dir)
     
-    # Check for other exact matches
+    # Check for T1CE/T1 CE keywords - these are contrast-enhanced T1w
+    for key in ['T1CE', 'T1_CE', 'T1 CE', 'T1+C', 'T1POST', 'T1_POST']:
+        if key in upper_name:
+            return 'T1w', True, agent or 'gd'
+    
+    # Check for T1w with contrast enhancement
+    if any(k in upper_name for k in ['T1W', 'T1', 'MPRAGE', 'SPGR', 'BRAVO']):
+        if is_contrast:
+            return 'T1w', True, agent
+        # Check for POST in T1 series name (common convention)
+        if 'POST' in upper_name:
+            return 'T1w', True, agent or 'gd'
+        return 'T1w', False, None
+    
+    # Check for other modalities
     for key, modality in MODALITY_MAPPING.items():
-        if key in upper_name and key not in ['T1CE', 'T1_CE', 'T1 CE']:
-            return modality
+        if key in upper_name:
+            return modality, False, None
     
     # Fallback to default
-    return None
+    return None, False, None
+
+
+def infer_modality_from_series(
+    series_name: str,
+    dicom_dir: Optional[Path] = None,
+) -> Tuple[Optional[str], bool, Optional[str]]:
+    """
+    Infer BIDS modality from DICOM series description.
+    
+    Parameters
+    ----------
+    series_name : str
+        DICOM series description or directory name
+    dicom_dir : Optional[Path]
+        Directory containing DICOM files for metadata extraction
+        
+    Returns
+    -------
+    Tuple[Optional[str], bool, Optional[str]]
+        (BIDS modality suffix, is_contrast_enhanced, contrast_agent)
+        For contrast-enhanced T1w: returns ('T1w', True, 'gd')
+    """
+    return _infer_modality_impl(series_name, dicom_dir)
+
+
+def _infer_modality_impl(
+    series_name: str,
+    dicom_dir: Optional[Path] = None,
+) -> Tuple[Optional[str], bool, Optional[str]]:
+    """Implementation of modality inference."""
+    upper_name = series_name.upper()
+    
+    # Check for contrast enhancement first (for T1w images)
+    is_contrast, agent = detect_contrast_enhancement(series_name, dicom_dir)
+    
+    # Check for T1CE/T1 CE keywords - these are contrast-enhanced T1w
+    for key in ['T1CE', 'T1_CE', 'T1 CE', 'T1+C', 'T1POST', 'T1_POST']:
+        if key in upper_name:
+            return 'T1w', True, agent or 'gd'
+    
+    # Check for T1w with contrast enhancement
+    if any(k in upper_name for k in ['T1W', 'T1', 'MPRAGE', 'SPGR', 'BRAVO']):
+        if is_contrast:
+            return 'T1w', True, agent
+        # Check for POST in T1 series name (common convention)
+        if 'POST' in upper_name:
+            return 'T1w', True, agent or 'gd'
+        return 'T1w', False, None
+    
+    # Check for other modalities
+    for key, modality in MODALITY_MAPPING.items():
+        if key in upper_name:
+            return modality, False, None
+    
+    # Fallback to default
+    return None, False, None
 
 
 def convert_dicom_series_to_nifti(
@@ -149,17 +523,22 @@ def _convert_with_dcm2niix(dicom_dir: Path, output_nifti: Path) -> bool:
 def _convert_with_nibabel(dicom_dir: Path, output_nifti: Path) -> bool:
     """Convert DICOM to NIfTI using nibabel (basic fallback)."""
     try:
-        import dicom
+        import pydicom
         
         # Find first DICOM file
         dicom_files = sorted(dicom_dir.glob('*.dcm')) + sorted(dicom_dir.glob('*.IMA'))
+        
+        if not dicom_files:
+            # Try files without extensions
+            dicom_files = [f for f in dicom_dir.iterdir() 
+                          if f.is_file() and not f.name.startswith('.')]
         
         if not dicom_files:
             LOGGER.warning(f"No DICOM files found in {dicom_dir}")
             return False
         
         # Load DICOM
-        dcm = dicom.dcmread(str(dicom_files[0]))
+        dcm = pydicom.dcmread(str(dicom_files[0]))
         
         # Extract pixel array
         pixel_array = dcm.pixel_array
@@ -196,50 +575,56 @@ def extract_dicom_metadata(dicom_dir: Path) -> dict:
     metadata = {}
     
     try:
-        import dicom
+        import pydicom
         
         # Find first DICOM file
         dicom_files = sorted(dicom_dir.glob('*.dcm')) + sorted(dicom_dir.glob('*.IMA'))
         if not dicom_files:
+            # Try files without extensions
+            dicom_files = [f for f in dicom_dir.iterdir() 
+                          if f.is_file() and not f.name.startswith('.')]
+        if not dicom_files:
             return metadata
         
-        dcm = dicom.dcmread(str(dicom_files[0]))
+        dcm = pydicom.dcmread(str(dicom_files[0]), stop_before_pixels=True)
         
-        # Extract key parameters for BIDS
+        # Extract key parameters for BIDS using attribute names
         key_mappings = {
-            'RepetitionTime': ('0018', '0088'),      # TR in ms
-            'EchoTime': ('0018', '0081'),           # TE in ms
-            'FlipAngle': ('0018', '1314'),          # FA in degrees
-            'MagneticFieldStrength': ('0018', '0087'), # Field strength
-            'EchoTrainLength': ('0018', '0091'),    # ETL
-            'SeriesNumber': ('0020', '0011'),       # Series number
-            'SeriesDescription': ('0008', '103e'),  # Series description
-            'SequenceName': ('0018', '0024'),       # Sequence name
-            'SequenceVariant': ('0018', '0021'),    # Sequence variant
-            'InversionTime': ('0018', '0082'),      # TI in ms
-            'PatientPosition': ('0018', '5100'),    # Patient position
+            'RepetitionTime': 'RepetitionTime',
+            'EchoTime': 'EchoTime',
+            'FlipAngle': 'FlipAngle',
+            'MagneticFieldStrength': 'MagneticFieldStrength',
+            'EchoTrainLength': 'EchoTrainLength',
+            'SeriesNumber': 'SeriesNumber',
+            'SeriesDescription': 'SeriesDescription',
+            'SequenceName': 'SequenceName',
+            'InversionTime': 'InversionTime',
+            'PatientPosition': 'PatientPosition',
+            'ContrastBolusAgent': 'ContrastBolusAgent',
+            'Manufacturer': 'Manufacturer',
+            'ManufacturerModelName': 'ManufacturerModelName',
         }
         
-        for bids_key, (group, element) in key_mappings.items():
+        for bids_key, dicom_attr in key_mappings.items():
             try:
-                tag = int(group, 16) * 65536 + int(element, 16)
-                if tag in dcm:
-                    value = dcm[tag].value
+                if hasattr(dcm, dicom_attr):
+                    value = getattr(dcm, dicom_attr)
                     # Convert to appropriate type
                     if isinstance(value, (int, float)):
                         metadata[bids_key] = float(value) if '.' in str(value) else int(value)
-                    else:
+                    elif value:
                         metadata[bids_key] = str(value).strip()
             except (KeyError, ValueError, TypeError):
                 pass
         
         LOGGER.debug(f"Extracted metadata: {metadata}")
         
+    except ImportError:
+        LOGGER.debug("pydicom not available for metadata extraction")
     except Exception as e:
         LOGGER.debug(f"Could not extract DICOM metadata: {e}")
     
     return metadata
-
 
 def create_bids_sidecar(
     output_nifti: Path,
@@ -283,6 +668,8 @@ def convert_subject_dicoms_to_bids(
     subject: str,
     session: Optional[str] = None,
     conversion_tool: str = 'dcm2niix',
+    anonymize: bool = True,
+    overwrite: bool = False,
 ) -> bool:
     """
     Convert all DICOM series in a subject directory to BIDS format.
@@ -299,6 +686,10 @@ def convert_subject_dicoms_to_bids(
         Session identifier (without 'ses-' prefix)
     conversion_tool : str
         Tool to use for conversion ('dcm2niix' or 'nibabel')
+    anonymize : bool
+        If True, remove PHI from BIDS JSON sidecars (default: True)
+    overwrite : bool
+        If True, overwrite existing output files (default: False)
         
     Returns
     -------
@@ -325,12 +716,19 @@ def convert_subject_dicoms_to_bids(
         # Check if directory contains DICOM files
         dicom_files = list(series_dir.glob('*.dcm')) + list(series_dir.glob('*.IMA'))
         if not dicom_files:
-            continue
+            # Try files without extensions (common in some DICOM archives)
+            potential_dicoms = [f for f in series_dir.iterdir() 
+                               if f.is_file() and not f.name.startswith('.')]
+            if not potential_dicoms:
+                continue
         
         LOGGER.info(f"Processing DICOM series: {series_dir.name}")
         
-        # Infer modality
-        modality = infer_modality_from_series(series_dir.name)
+        # Infer modality with contrast enhancement detection
+        modality, is_contrast, contrast_agent = infer_modality_from_series(
+            series_dir.name, 
+            dicom_dir=series_dir,
+        )
         if not modality:
             LOGGER.warning(f"Could not infer modality from series: {series_dir.name}")
             modality = 'anat'  # Default
@@ -349,19 +747,38 @@ def convert_subject_dicoms_to_bids(
         datatype_dir = sub_bids_dir / datatype
         datatype_dir.mkdir(parents=True, exist_ok=True)
         
-        # Construct BIDS filename
+        # Construct BIDS filename with ce- entity for contrast-enhanced images
+        # BIDS uses 'ce-' as the entity key for contrast agent (not 'ceagent-')
         if session:
-            bids_basename = f'sub-{subject}_ses-{session}_{modality}'
+            if is_contrast and contrast_agent:
+                # Use ce entity: sub-XX_ses-XX_ce-gd_T1w.nii.gz
+                bids_basename = f'sub-{subject}_ses-{session}_ce-{contrast_agent}_{modality}'
+                LOGGER.info(f"  → Detected contrast enhancement: ce-{contrast_agent}")
+            else:
+                bids_basename = f'sub-{subject}_ses-{session}_{modality}'
         else:
-            bids_basename = f'sub-{subject}_{modality}'
+            if is_contrast and contrast_agent:
+                # Use ce entity: sub-XX_ce-gd_T1w.nii.gz
+                bids_basename = f'sub-{subject}_ce-{contrast_agent}_{modality}'
+                LOGGER.info(f"  → Detected contrast enhancement: ce-{contrast_agent}")
+            else:
+                bids_basename = f'sub-{subject}_{modality}'
         
         output_nifti = datatype_dir / f'{bids_basename}.nii.gz'
         
-        # Skip if already exists
+        # Handle existing files
         if output_nifti.exists():
-            LOGGER.info(f"Output file already exists, skipping: {output_nifti.name}")
-            converted_count += 1
-            continue
+            if overwrite:
+                LOGGER.info(f"Overwriting existing file: {output_nifti.name}")
+                output_nifti.unlink()
+                # Also remove associated JSON sidecar if exists
+                json_sidecar = output_nifti.with_suffix('').with_suffix('.json')
+                if json_sidecar.exists():
+                    json_sidecar.unlink()
+            else:
+                LOGGER.info(f"Output file already exists, skipping: {output_nifti.name}")
+                converted_count += 1
+                continue
         
         # Convert DICOM to NIfTI
         success = convert_dicom_series_to_nifti(
@@ -375,7 +792,16 @@ def convert_subject_dicoms_to_bids(
             # (dcm2niix creates JSON automatically with -ba y flag)
             if conversion_tool != 'dcm2niix':
                 metadata = extract_dicom_metadata(series_dir)
+                # Add contrast agent info to sidecar
+                if is_contrast and contrast_agent:
+                    metadata['ContrastBolusAgent'] = contrast_agent
                 create_bids_sidecar(output_nifti, metadata)
+            
+            # Anonymize BIDS sidecar (remove PHI fields)
+            if anonymize:
+                json_path = output_nifti.with_suffix('').with_suffix('.json')
+                anonymize_bids_sidecar(json_path)
+            
             converted_count += 1
         else:
             LOGGER.warning(f"Failed to convert series: {series_dir.name}")

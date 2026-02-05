@@ -35,15 +35,42 @@ from nipype import logging
 from nipype.interfaces import utility as niu
 from nipype.pipeline import engine as pe
 from niworkflows.engine.workflows import LiterateWorkflow as Workflow
+from niworkflows.utils.bids import collect_data, BIDSLayout, DEFAULT_BIDS_QUERIES
+from niworkflows.interfaces.bids import BIDSInfo
+from niworkflows.utils.misc import fix_multi_T1w_source_name
+from bids.layout import Query
+
+# Custom BIDS queries for OncoPrep (adds t1ce for neuro-oncology)
+# Uses ceagent entity per BIDS spec: T1ce = T1w with contrast agent (e.g., gadolinium)
+import copy
+ONCOPREP_BIDS_QUERIES = copy.deepcopy(DEFAULT_BIDS_QUERIES)
+# T1ce: T1w images WITH ceagent entity (contrast-enhanced)
+ONCOPREP_BIDS_QUERIES['t1ce'] = {
+    'datatype': 'anat',
+    'suffix': 'T1w',
+    'ceagent': Query.REQUIRED,  # Must have ceagent entity
+    'part': ['mag', None],
+}
+# Update T1w query to EXCLUDE images with ceagent (avoid duplicates)
+ONCOPREP_BIDS_QUERIES['t1w'] = {
+    'datatype': 'anat',
+    'suffix': 'T1w',
+    'ceagent': Query.NONE,  # Must NOT have ceagent entity
+    'part': ['mag', None],
+}
 
 from oncoprep import __version__
 from oncoprep.workflows.preproc import build_preproc_workflow
-from oncoprep.workflows.outputs import init_ds_mask_wf, init_ds_template_wf
+from oncoprep.workflows.outputs import init_ds_mask_wf, init_ds_modalities_wf, init_ds_template_wf
 from oncoprep.workflows.reports import init_report_wf
 from oncoprep.workflows.metrics import (
     init_qa_metrics_wf,
     init_snr_metrics_wf,
 )
+from ..interfaces import DerivativesDataSink, OncoprepBIDSDataGrabber
+from ..interfaces.reports import SubjectSummary, AboutSummary
+from .anatomical import init_anat_preproc_wf
+
 
 LOGGER = logging.getLogger('nipype.workflow')
 
@@ -61,6 +88,8 @@ def init_oncoprep_wf(
     skull_strip_template: str = 'OASIS30ANTs',
     skull_strip_fixed_seed: bool = False,
     skull_strip_mode: str = 'auto',
+    skull_strip_backend: str = 'ants',
+    registration_backend: str = 'ants',
     longitudinal: bool = False,
     output_spaces: Optional[list] = None,
     use_gpu: bool = False,
@@ -95,6 +124,10 @@ def init_oncoprep_wf(
         Use fixed random seed for reproducibility
     skull_strip_mode : str
         Skull stripping mode: 'auto', 'skip', or 'force'
+    skull_strip_backend : str
+        Skull stripping backend: 'ants', 'hdbet', or 'synthstrip'
+    registration_backend : str
+        Registration backend: 'ants' (ANTs SyN) or 'greedy' (PICSL Greedy)
     longitudinal : bool
         Treat as longitudinal dataset
     output_spaces : list | None
@@ -154,16 +187,16 @@ to workflows in *OncoPrep*'s documentation]\
 
         single_subject_wf = init_single_subject_wf(
             subject_id=subject_id,
-            session_ids=session_ids,
+            session_id=session_ids,
             bids_dir=bids_dir,
             output_dir=output_dir,
-            work_dir=work_dir,
-            run_uuid=run_uuid,
             omp_nthreads=omp_nthreads,
             mem_gb=mem_gb,
             skull_strip_template=skull_strip_template,
             skull_strip_fixed_seed=skull_strip_fixed_seed,
             skull_strip_mode=skull_strip_mode,
+            skull_strip_backend=skull_strip_backend,
+            registration_backend=registration_backend,
             longitudinal=longitudinal,
             output_spaces=output_spaces,
             use_gpu=use_gpu,
@@ -188,16 +221,19 @@ to workflows in *OncoPrep*'s documentation]\
 def init_single_subject_wf(
     *,
     subject_id: str,
-    session_ids: Union[str, list, None],
+    session_id: Union[str, list, None],
     bids_dir: Path,
     output_dir: Path,
-    work_dir: Path,
-    run_uuid: str,
+    derivatives: List[Path] = [],
+    layout: Optional[BIDSLayout] = None,
+    bids_filters: Optional[dict] = None,
     omp_nthreads: int = 1,
     mem_gb: Optional[float] = None,
     skull_strip_template: str = 'OASIS30ANTs',
     skull_strip_fixed_seed: bool = False,
     skull_strip_mode: str = 'auto',
+    skull_strip_backend: str = 'ants',
+    registration_backend: str = 'ants',
     longitudinal: bool = False,
     output_spaces: Optional[list] = None,
     use_gpu: bool = False,
@@ -205,6 +241,7 @@ def init_single_subject_wf(
     skip_segmentation: bool = True,
     sloppy: bool = False,
     name: str = 'single_subject_wf',
+    debug=False,
 ) -> Workflow:
     """
     Create a single subject preprocessing workflow.
@@ -218,7 +255,7 @@ def init_single_subject_wf(
             from oncoprep.workflows.base import init_single_subject_wf
             wf = init_single_subject_wf(
                 subject_id='01',
-                session_ids=None,
+                session_id=None,
                 bids_dir=Path('.'),
                 output_dir=Path('derivatives'),
                 work_dir=Path('work'),
@@ -250,6 +287,10 @@ def init_single_subject_wf(
         Use fixed seed for reproducibility
     skull_strip_mode : str
         Skull stripping mode ('auto', 'skip', or 'force')
+    skull_strip_backend : str
+        Skull stripping backend ('ants', 'hdbet', or 'synthstrip')
+    registration_backend : str
+        Registration backend ('ants' or 'greedy')
     longitudinal : bool
         Treat as longitudinal
     output_spaces : list | None
@@ -270,128 +311,167 @@ def init_single_subject_wf(
     Workflow
         Single-subject preprocessing workflow
     """
+    # Create layout if not provided
+    if layout is None:
+        layout = BIDSLayout(str(bids_dir), validate=False, derivatives=False)
+
+    # Use custom queries that include t1ce for neuro-oncology data
+    subject_data = collect_data(
+        layout, subject_id, session_id=session_id, bids_filters=bids_filters,
+        queries=ONCOPREP_BIDS_QUERIES,
+    )[0]
+
     if output_spaces is None:
         output_spaces = ['MNI152NLin2009cAsym']
 
     workflow = Workflow(name=name)
     workflow.__desc__ = f"""
 Preprocessing of anatomical and functional data for subject {subject_id}
-was performed using OncoPrep.
+was performed using OncoPrep {__version__}, which is based on Nipype {nipype_ver}.
+(@nipype1; @nipype2; RRID:SCR_002502).
 """
+    workflow.__postdesc__ = """
+
+For more details of the pipeline, see [the section corresponding
+to workflows in *OncoPrep*'s documentation]\
+(https://oncoprep.readthedocs.io/en/latest/workflows.html \
+"OncoPrep's documentation").
+
+### References
+
+"""
+
+    from ..utils.bids import collect_derivatives
+
+    deriv_cache = {}
+    std_spaces = output_spaces.get_spaces(nonstandard=False) if hasattr(output_spaces, 'get_spaces') else output_spaces
+    for deriv_dir in derivatives:
+        deriv_cache.update(
+            collect_derivatives(
+                bids_dir=bids_dir,
+                deriv_dir=deriv_dir,
+                subject_id=subject_id,
+                session_id=session_id,
+                spaces=std_spaces,
+            )
+        )
 
     # Input node - currently minimal, could be extended for derivatives
     inputnode = pe.Node(
-        niu.IdentityInterface(fields=['subject_id']),
+        niu.IdentityInterface(fields=['subject_id', 'subjects_dir']),
         name='inputnode',
     )
-
-    # Output node
-    outputnode = pe.Node(
-        niu.IdentityInterface(
-            fields=[
-                't1w_preproc',
-                't1w_mask',
-                't1ce_preproc',
-                't2w_preproc',
-                'flair_preproc',
-                'anat2std_xfm',
-                'std2anat_xfm',
-                'template',
-            ]
-        ),
-        name='outputnode',
+    bidssrc = pe.Node(
+        OncoprepBIDSDataGrabber(subject_data=subject_data),
+        name='bidssrc',
     )
 
-    # Create preprocessing workflow
-    anat_preproc_wf = build_preproc_workflow(
+    bids_info = pe.Node(
+        BIDSInfo(bids_dir=bids_dir),
+        name='bids_info',
+        run_without_submitting=True,
+    )
+
+    summary = pe.Node(
+        SubjectSummary(output_spaces=std_spaces),
+        name='summary',
+        run_without_submitting=True,
+    )
+
+    about = pe.Node(
+        AboutSummary(version=__version__, command=" ".join(sys.argv)),
+        name='about',
+        run_without_submitting=True,
+    )
+
+    dismiss_entities = ('session',) if session_id else None
+
+    ds_report_summary = pe.Node(
+        DerivativesDataSink(
+            base_directory=str(output_dir),
+            dismiss_entities=dismiss_entities,
+            desc='summary',
+            datatype='figures',
+        ),
+        name='ds_report_summary',
+        run_without_submitting=True,
+    )
+
+    ds_report_about = pe.Node(
+        DerivativesDataSink(
+            base_directory=str(output_dir),
+            dismiss_entities=dismiss_entities,
+            desc='about',
+            datatype='figures',
+        ),
+        name='ds_report_about',
+        run_without_submitting=True,
+    )
+
+    # preprocessing of anat (includes registration to MNI)
+    anat_preproc_wf = init_anat_preproc_wf(
         bids_dir=bids_dir,
         output_dir=output_dir,
-        participant_label=[subject_id],
-        session_label=session_ids if isinstance(session_ids, list) else ([session_ids] if session_ids else None),
-        nprocs=1,  # Single subject workflow
-        omp_nthreads=omp_nthreads,
-        mem_gb=mem_gb,
+        sloppy=sloppy,
+        debug=debug,
+        precomputed=deriv_cache,
+        longitudinal=longitudinal,
+        name='anat_preproc_wf',
+        t1w=subject_data.get('t1w', None),
+        t1ce=subject_data.get('t1ce', None),
+        t2w=subject_data.get('t2w', None),
+        flair=subject_data.get('flair', None),
+        output_spaces=std_spaces,
         skull_strip_template=skull_strip_template,
         skull_strip_fixed_seed=skull_strip_fixed_seed,
         skull_strip_mode=skull_strip_mode,
-        longitudinal=longitudinal,
-        output_spaces=output_spaces,
-        use_gpu=use_gpu,
-        deface=deface,
-        skip_segmentation=skip_segmentation,
-        sloppy=sloppy,
+        skull_strip_backend=skull_strip_backend,
+        registration_backend=registration_backend,
+        omp_nthreads=omp_nthreads,
     )
-
-    # Connect workflow
+    
     workflow.connect([
-        (anat_preproc_wf, outputnode, [
-            ('outputnode.t1w_preproc', 't1w_preproc'),
-            ('outputnode.t1w_mask', 't1w_mask'),
-            ('outputnode.t1ce_preproc', 't1ce_preproc'),
-            ('outputnode.t2w_preproc', 't2w_preproc'),
-            ('outputnode.flair_preproc', 'flair_preproc'),
-            ('outputnode.anat2std_xfm', 'anat2std_xfm'),
-            ('outputnode.std2anat_xfm', 'std2anat_xfm'),
-            ('outputnode.template', 'template'),
-        ]),
+        (inputnode, anat_preproc_wf, [('subjects_dir', 'inputnode.subjects_dir')]),
+        (bidssrc, bids_info, [(('t1w', fix_multi_T1w_source_name), 'in_file')]),
+        (inputnode, summary, [('subjects_dir', 'subjects_dir')]),
+        (bidssrc, summary, [('t1w', 't1w'),
+                            ('t1ce', 't1ce'),
+                            ('t2w', 't2w'),
+                            ('flair', 'flair')]),
+        (bids_info, summary, [('subject', 'subject_id')]),
+        (bids_info, anat_preproc_wf, [(('subject', _prefix, session_id), 'inputnode.subject_id')]),
+        (bidssrc, anat_preproc_wf, [('t1w', 'inputnode.t1w'),
+                                    ('t1ce', 'inputnode.t1ce'),
+                                    ('t2w', 'inputnode.t2w'),
+                                    ('flair', 'inputnode.flair')]),
+        (bidssrc, ds_report_summary, [(('t1w', fix_multi_T1w_source_name), 'source_file')]),
+        (summary, ds_report_summary, [('out_report', 'in_file')]),
+        (bidssrc, ds_report_about, [(('t1w', fix_multi_T1w_source_name), 'source_file')]),
+        (about, ds_report_about, [('out_report', 'in_file')]),
     ])
 
-    # Connect output workflows for BIDS derivatives
-    ds_mask_wf = init_ds_mask_wf(
-        bids_root=str(bids_dir),
-        output_dir=str(output_dir),
-        mask_type='brain',
-    )
-    ds_mask_wf.inputs.inputnode.source_files = [
-        str(bids_dir / f'sub-{subject_id}' / 'anat' / f'sub-{subject_id}_T1w.nii.gz')
-    ]
+    # if not skip_segmentation:
+    #     anat_seg_wf = init_anat_seg_wf(
 
-    ds_template_wf = init_ds_template_wf(
-        num_anat=1,
-        output_dir=str(output_dir),
-        image_type='T1w',
-    )
-
-    # Report generation
-    report_wf = init_report_wf(
-        output_dir=str(output_dir),
-        subject_label=subject_id,
-        session_label=None if isinstance(session_ids, type(None)) else (
-            session_ids if isinstance(session_ids, str) else session_ids[0]
-        ),
-    )
-
-    # QA metrics
-    qa_wf = init_qa_metrics_wf(
-        output_dir=str(output_dir),
-    )
-
-    snr_wf = init_snr_metrics_wf(
-        output_dir=str(output_dir),
-    )
-
-    workflow.connect([
-        (anat_preproc_wf, ds_mask_wf, [
-            ('outputnode.t1w_mask', 'inputnode.mask_file'),
-        ]),
-        (anat_preproc_wf, ds_template_wf, [
-            ('outputnode.t1w_preproc', 'inputnode.anat_preproc'),
-        ]),
-        (anat_preproc_wf, report_wf, [
-            ('outputnode.t1w_preproc', 'inputnode.anat_preproc'),
-            ('outputnode.t1w_mask', 'inputnode.anat_mask'),
-        ]),
-        (anat_preproc_wf, qa_wf, [
-            ('outputnode.t1w_preproc', 'inputnode.anat_preproc'),
-            ('outputnode.t1w_mask', 'inputnode.anat_mask'),
-        ]),
-        (anat_preproc_wf, snr_wf, [
-            ('outputnode.t1w_preproc', 'inputnode.anat_preproc'),
-            ('outputnode.t1w_mask', 'inputnode.anat_mask'),
-        ]),
-    ])
-
-    # Propagate preprocessing workflow description
-    workflow.__desc__ += anat_preproc_wf.__desc__
+    #     ) # TODO: segmentation workflow
+    #     workflow.connect([
+    #         (anat_preproc_wf, anat_seg_wf, [('outputnode.brain_mask', 'inputnode.brain_mask'),
+    #                                     ('outputnode.t1w_preproc', 'inputnode.t1w_preproc')]),
+    #     ])
 
     return workflow
+
+def _prefix(subject_id, session_id):
+    if not subject_id.startswith('sub-'):
+        subject_id = f'sub-{subject_id}'
+
+    if session_id:
+        ses_str = session_id
+        if isinstance(session_id, list):
+            from ..utils.misc import stringify_sessions
+            ses_str = stringify_sessions(session_id)
+        if not ses_str.startswith('ses-'):
+            ses_str = f'ses-{ses_str}'
+        subject_id += f'_{ses_str}'
+
+    return subject_id

@@ -214,6 +214,24 @@ def get_parser():
         help='skull stripping mode: force ensures skull stripping, skip ignores it, '
         'auto automatically ignores if pre-stripped brains are detected.',
     )
+    g_ants.add_argument(
+        '--skull-strip-backend',
+        action='store',
+        choices=('ants', 'hdbet', 'synthstrip'),
+        default='ants',
+        help='skull stripping backend: ants (ANTs brain extraction), '
+        'hdbet (HD-BET, requires GPU), synthstrip (FreeSurfer SynthStrip). '
+        'default: ants',
+    )
+    g_ants.add_argument(
+        '--registration-backend',
+        action='store',
+        choices=('ants', 'greedy'),
+        default='ants',
+        help='registration backend for template normalization: '
+        'ants (ANTs SyN, default), greedy (PICSL Greedy, faster). '
+        'default: ants',
+    )
     
     # GPU and acceleration options
     g_accel = parser.add_argument_group('GPU and acceleration options')
@@ -537,6 +555,8 @@ def build_workflow(opts, retval):
         skull_strip_template=opts.skull_strip_template,
         skull_strip_fixed_seed=opts.skull_strip_fixed_seed,
         skull_strip_mode=opts.skull_strip_mode,
+        skull_strip_backend=opts.skull_strip_backend,
+        registration_backend=opts.registration_backend,
         longitudinal=opts.longitudinal,
         output_spaces=opts.output_spaces,
         use_gpu=opts.use_gpu,

@@ -36,8 +36,7 @@ from niworkflows.interfaces.utility import KeySelect
 from ..interfaces import DerivativesDataSink
 from ..interfaces.templateflow import TemplateFlowSelect, fetch_template_files
 
-if ty.TYPE_CHECKING:
-    from niworkflows.utils.spaces import SpatialReferences
+from niworkflows.utils.spaces import SpatialReferences
 
 BIDS_TISSUE_ORDER = ('GM', 'WM', 'CSF')
 
@@ -93,6 +92,9 @@ def init_anat_reports_wf(*, spaces, freesurfer, output_dir, sloppy=False, name='
         't1w_preproc',
         't1w_mask',
         't1w_dseg',
+        't1ce_preproc',
+        't2w_preproc',
+        'flair_preproc',
         'template',
         'anat2std_xfm',
         # May be missing
@@ -121,6 +123,7 @@ def init_anat_reports_wf(*, spaces, freesurfer, output_dir, sloppy=False, name='
         name='ds_t1w_dseg_mask_report',
         run_without_submitting=True,
     )
+    # implement additional reports
 
     # fmt:off
     workflow.connect([
@@ -134,9 +137,12 @@ def init_anat_reports_wf(*, spaces, freesurfer, output_dir, sloppy=False, name='
         (seg_rpt, ds_t1w_dseg_mask_report, [('out_report', 'in_file')]),
     ])
     # fmt:on
+    # check spaces for SpatialReferences class
+    if not isinstance(spaces, SpatialReferences):
+        spaces = SpatialReferences(spaces)
 
     if spaces._cached is not None and spaces.cached.references:
-        template_iterator_wf = init_template_iterator_wf(spaces=spaces, sloppy=sloppy)
+        multimodal_template_iterator_wf = init_multimodal_template_iterator_wf(spaces=spaces, sloppy=sloppy)
         t1w_std = pe.Node(
             ApplyTransforms(
                 dimension=3,
@@ -156,6 +162,36 @@ def init_anat_reports_wf(*, spaces, freesurfer, output_dir, sloppy=False, name='
             name='mask_std',
         )
 
+        t1ce_std = pe.Node(
+            ApplyTransforms(
+                dimension=3,
+                default_value=0,
+                float=True,
+                interpolation='LanczosWindowedSinc',
+            ),
+            name='t1ce_std',
+        )
+
+        t2w_std = pe.Node(
+            ApplyTransforms(
+                dimension=3,
+                default_value=0,
+                float=True,
+                interpolation='LanczosWindowedSinc',
+            ),
+            name='t2w_std',
+        )
+
+        flair_std = pe.Node(    
+            ApplyTransforms(
+                dimension=3,
+                default_value=0,
+                float=True,
+                interpolation='LanczosWindowedSinc',
+            ),
+            name='flair_std',
+        )
+
         # Generate reportlets showing spatial normalization
         norm_msk = pe.Node(
             niu.Function(
@@ -173,27 +209,61 @@ def init_anat_reports_wf(*, spaces, freesurfer, output_dir, sloppy=False, name='
             name='ds_std_t1w_report',
             run_without_submitting=True,
         )
+        
+        # for extra modalities
+        ds_std_t1ce_report = pe.Node(
+            DerivativesDataSink(base_directory=output_dir, suffix='T1ce', datatype='figures'),
+            name='ds_std_t1ce_report',
+            run_without_submitting=True,
+        )
+
+        ds_std_t2w_report = pe.Node(
+            DerivativesDataSink(base_directory=output_dir, suffix='T2w', datatype='figures'),
+            name='ds_std_t2w_report',
+            run_without_submitting=True,
+        )
+
+        ds_std_flair_report = pe.Node(
+            DerivativesDataSink(base_directory=output_dir, suffix='FLAIR', datatype='figures'),
+            name='ds_std_flair_report',
+            run_without_submitting=True,
+        )
 
         # fmt:off
         workflow.connect([
-            (inputnode, template_iterator_wf, [
+            (inputnode, multimodal_template_iterator_wf, [
                 ('template', 'inputnode.template'),
                 ('anat2std_xfm', 'inputnode.anat2std_xfm'),
             ]),
             (inputnode, t1w_std, [('t1w_preproc', 'input_image')]),
             (inputnode, mask_std, [('t1w_mask', 'input_image')]),
-            (template_iterator_wf, t1w_std, [
+            (inputnode, t1ce_std, [('t1ce_preproc', 'input_image')]),
+            (inputnode, t2w_std, [('t2w_preproc', 'input_image')]),
+            (inputnode, flair_std, [('flair_preproc', 'input_image')]),
+            (multimodal_template_iterator_wf, t1w_std, [
                 ('outputnode.anat2std_xfm', 'transforms'),
                 ('outputnode.std_t1w', 'reference_image'),
             ]),
-            (template_iterator_wf, mask_std, [
+            (multimodal_template_iterator_wf, mask_std, [
                 ('outputnode.anat2std_xfm', 'transforms'),
                 ('outputnode.std_t1w', 'reference_image'),
             ]),
-            (template_iterator_wf, norm_rpt, [('outputnode.space', 'before_label')]),
+            (multimodal_template_iterator_wf, t1ce_std, [
+                ('outputnode.anat2std_xfm', 'transforms'),
+                ('outputnode.std_t1w', 'reference_image'),
+            ]),
+            (multimodal_template_iterator_wf, t2w_std, [
+                ('outputnode.anat2std_xfm', 'transforms'),
+                ('outputnode.std_t1w', 'reference_image'),
+            ]),
+            (multimodal_template_iterator_wf, flair_std, [
+                ('outputnode.anat2std_xfm', 'transforms'),
+                ('outputnode.std_t', 'reference_image'),
+            ]),
+            (multimodal_template_iterator_wf, norm_rpt, [('outputnode.space', 'before_label')]),
             (t1w_std, norm_msk, [('output_image', 'after')]),
             (mask_std, norm_msk, [('output_image', 'after_mask')]),
-            (template_iterator_wf, norm_msk, [
+            (multimodal_template_iterator_wf, norm_msk, [
                 ('outputnode.std_t1w', 'before'),
                 ('outputnode.std_mask', 'mask_file'),
             ]),
@@ -202,8 +272,16 @@ def init_anat_reports_wf(*, spaces, freesurfer, output_dir, sloppy=False, name='
                 ('after', 'after'),
             ]),
             (inputnode, ds_std_t1w_report, [('source_file', 'source_file')]),
-            (template_iterator_wf, ds_std_t1w_report, [('outputnode.space', 'space')]),
+            (multimodal_template_iterator_wf, ds_std_t1w_report, [('outputnode.space', 'space')]),
             (norm_rpt, ds_std_t1w_report, [('out_report', 'in_file')]),
+            (multimodal_template_iterator_wf, ds_std_t1ce_report, [('outputnode.space', 'space')]),
+            (norm_rpt, ds_std_t1ce_report, [('out_report', 'in_file')]),
+            (inputnode, ds_std_t2w_report, [('source_file', 'source_file')]),
+            (multimodal_template_iterator_wf, ds_std_t2w_report, [('outputnode.space', 'space')]),
+            (norm_rpt, ds_std_t2w_report, [('out_report', 'in_file')]),
+            (inputnode, ds_std_flair_report, [('source_file', 'source_file')]),
+            (multimodal_template_iterator_wf, ds_std_flair_report, [('outputnode.space', 'space')]),
+            (norm_rpt, ds_std_flair_report, [('out_report', 'in_file')]),
         ])
         # fmt:on
 
@@ -272,13 +350,15 @@ def init_ds_template_wf(
     inputnode = pe.Node(
         niu.IdentityInterface(
             fields=[
-                'source_files',
                 'anat_ref_xfms',
                 'anat_preproc',
+                'source_file',
+                'source_files',
             ]
         ),
         name='inputnode',
     )
+    
     outputnode = pe.Node(niu.IdentityInterface(fields=['anat_preproc']), name='outputnode')
 
     ds_anat_preproc = pe.Node(
@@ -291,7 +371,7 @@ def init_ds_template_wf(
     # fmt:off
     workflow.connect([
         (inputnode, ds_anat_preproc, [('anat_preproc', 'in_file'),
-                                     ('source_files', 'source_file')]),
+                                     ('source_file', 'source_file')]),
         (ds_anat_preproc, outputnode, [('out_file', 'anat_preproc')]),
     ])
     # fmt:on
@@ -322,9 +402,220 @@ def init_ds_template_wf(
     return workflow
 
 
+def init_ds_modalities_wf(
+    *,
+    bids_dir: str,
+    output_dir: str,
+    name='ds_modalities_wf',
+) -> pe.Workflow:
+    """
+    Save native-space preprocessed modalities (T1w, T1ce, T2w, FLAIR).
+
+    All images are skull-stripped. Uses conditional saving - only saves 
+    modalities that exist (not None).
+
+    Parameters
+    ----------
+    bids_dir : :obj:`str`
+        Root path of BIDS dataset for source file resolution
+    output_dir : :obj:`str`
+        Directory in which to save derivatives
+    name : :obj:`str`
+        Workflow name (default: ds_modalities_wf)
+
+    Inputs
+    ------
+    source_file
+        Original BIDS T1w file for source_file entity
+    t1w_brain
+        Skull-stripped T1w image in native space
+    t1ce_preproc
+        Skull-stripped T1ce image in native space (or None)
+    t2w_preproc
+        Skull-stripped T2w image in native space (or None)
+    flair_preproc
+        Skull-stripped FLAIR image in native space (or None)
+
+    """
+    workflow = Workflow(name=name)
+
+    inputnode = pe.Node(
+        niu.IdentityInterface(
+            fields=[
+                'source_file',
+                't1w_brain',
+                't1ce_preproc',
+                't2w_preproc',
+                'flair_preproc',
+            ]
+        ),
+        name='inputnode',
+    )
+
+    def _ds_if_exists_native(in_file, base_directory, source_file, suffix, desc='preproc',
+                              skull_stripped=False, resolution='native', acquisition=None):
+        """Save native-space file only if it exists (not None/Undefined/empty).
+        
+        Creates BIDS-compliant derivative with JSON sidecar containing metadata.
+        
+        Parameters
+        ----------
+        in_file : str
+            Path to input NIfTI file
+        base_directory : str
+            Output directory for derivatives
+        source_file : str
+            Original BIDS source file (for entity extraction)
+        suffix : str
+            BIDS suffix (T1w, T2w, FLAIR)
+        desc : str
+            Description entity value (default: 'preproc')
+        skull_stripped : bool
+            Whether the image has been skull-stripped (default: False)
+        resolution : str
+            Resolution description (default: 'native')
+        acquisition : str or None
+            Acquisition entity value (e.g., 'ce' for contrast-enhanced)
+            
+        Returns
+        -------
+        str or None
+            Path to saved file, or None if input was empty
+        """
+        from nipype.interfaces.base import Undefined, isdefined
+        # Check for various "empty" conditions
+        if in_file is None:
+            return None
+        if not isdefined(in_file):
+            return None
+        if isinstance(in_file, (list, tuple)) and len(in_file) == 0:
+            return None
+        if isinstance(in_file, str) and in_file == '':
+            return None
+            
+        from oncoprep.interfaces import DerivativesDataSink
+        ds = DerivativesDataSink(
+            base_directory=base_directory,
+            desc=desc,
+            suffix=suffix,
+            compress=True,
+        )
+        # Add acquisition entity if specified (e.g., acq-ce for contrast-enhanced)
+        if acquisition is not None:
+            ds.inputs.acquisition = acquisition
+        # BIDS derivatives metadata for JSON sidecar
+        ds.inputs.SkullStripped = skull_stripped
+        ds.inputs.Resolution = resolution
+        ds.inputs.in_file = in_file
+        ds.inputs.source_file = source_file
+        result = ds.run()
+        return result.outputs.out_file
+
+    # T1w skull-stripped
+    ds_t1w = pe.Node(
+        niu.Function(
+            function=_ds_if_exists_native,
+            input_names=['in_file', 'base_directory', 'source_file', 'suffix', 'desc',
+                         'skull_stripped', 'resolution', 'acquisition'],
+            output_names=['out_file'],
+        ),
+        name='ds_t1w',
+        run_without_submitting=True,
+    )
+    ds_t1w.inputs.base_directory = output_dir
+    ds_t1w.inputs.suffix = 'T1w'
+    ds_t1w.inputs.desc = 'preproc'
+    ds_t1w.inputs.skull_stripped = True
+    ds_t1w.inputs.resolution = 'native'
+    ds_t1w.inputs.acquisition = None  # No acquisition entity for pre-contrast T1w
+
+    # T1ce (contrast-enhanced) skull-stripped
+    ds_t1ce = pe.Node(
+        niu.Function(
+            function=_ds_if_exists_native,
+            input_names=['in_file', 'base_directory', 'source_file', 'suffix', 'desc',
+                         'skull_stripped', 'resolution', 'acquisition'],
+            output_names=['out_file'],
+        ),
+        name='ds_t1ce',
+        run_without_submitting=True,
+    )
+    ds_t1ce.inputs.base_directory = output_dir
+    ds_t1ce.inputs.suffix = 'T1w'  # Standard BIDS suffix
+    ds_t1ce.inputs.desc = 'preproc'
+    ds_t1ce.inputs.skull_stripped = True
+    ds_t1ce.inputs.resolution = 'native'
+    ds_t1ce.inputs.acquisition = 'ce'  # acq-ce distinguishes from pre-contrast T1w
+
+    ds_t2w = pe.Node(
+        niu.Function(
+            function=_ds_if_exists_native,
+            input_names=['in_file', 'base_directory', 'source_file', 'suffix', 'desc',
+                         'skull_stripped', 'resolution', 'acquisition'],
+            output_names=['out_file'],
+        ),
+        name='ds_t2w',
+        run_without_submitting=True,
+    )
+    ds_t2w.inputs.base_directory = output_dir
+    ds_t2w.inputs.suffix = 'T2w'
+    ds_t2w.inputs.desc = 'preproc'
+    ds_t2w.inputs.skull_stripped = True
+    ds_t2w.inputs.resolution = 'native'
+    ds_t2w.inputs.acquisition = None  # No acquisition entity for T2w
+
+    ds_flair = pe.Node(
+        niu.Function(
+            function=_ds_if_exists_native,
+            input_names=['in_file', 'base_directory', 'source_file', 'suffix', 'desc',
+                         'skull_stripped', 'resolution', 'acquisition'],
+            output_names=['out_file'],
+        ),
+        name='ds_flair',
+        run_without_submitting=True,
+    )
+    ds_flair.inputs.base_directory = output_dir
+    ds_flair.inputs.suffix = 'FLAIR'
+    ds_flair.inputs.desc = 'preproc'
+    ds_flair.inputs.skull_stripped = True
+    ds_flair.inputs.resolution = 'native'
+    ds_flair.inputs.acquisition = None  # No acquisition entity for FLAIR
+
+    # Outputnode to signal completion and allow downstream dependency
+    outputnode = pe.Node(
+        niu.IdentityInterface(
+            fields=['t1w_native', 't1ce_native', 't2w_native', 'flair_native']
+        ),
+        name='outputnode',
+    )
+
+    # fmt:off
+    workflow.connect([
+        # Save T1w skull-stripped
+        (inputnode, ds_t1w, [('t1w_brain', 'in_file'),
+                             ('source_file', 'source_file')]),
+        # Save T1ce (uses acq-ce entity to distinguish from pre-contrast T1w)
+        (inputnode, ds_t1ce, [('t1ce_preproc', 'in_file'),
+                              ('source_file', 'source_file')]),
+        # Save T2w and FLAIR
+        (inputnode, ds_t2w, [('t2w_preproc', 'in_file'),
+                             ('source_file', 'source_file')]),
+        (inputnode, ds_flair, [('flair_preproc', 'in_file'),
+                               ('source_file', 'source_file')]),
+        # Connect outputs for downstream dependency chaining
+        (ds_t1w, outputnode, [('out_file', 't1w_native')]),
+        (ds_t1ce, outputnode, [('out_file', 't1ce_native')]),
+        (ds_t2w, outputnode, [('out_file', 't2w_native')]),
+        (ds_flair, outputnode, [('out_file', 'flair_native')]),
+    ])
+    # fmt:on
+
+    return workflow
+
+
 def init_ds_mask_wf(
     *,
-    bids_root: str,
+    bids_dir: str,
     output_dir: str,
     mask_type: ty.Literal['brain', 'roi', 'ribbon'],
     extra_entities: Optional[Dict] = None,
@@ -335,7 +626,7 @@ def init_ds_mask_wf(
 
     Parameters
     ----------
-    bids_root : :obj:`str`
+    bids_dir : :obj:`str`
         Root path of BIDS dataset
     output_dir : :obj:`str`
         Directory in which to save derivatives
@@ -366,7 +657,7 @@ def init_ds_mask_wf(
     outputnode = pe.Node(niu.IdentityInterface(fields=['mask_file']), name='outputnode')
 
     raw_sources = pe.Node(niu.Function(function=_bids_relative), name='raw_sources')
-    raw_sources.inputs.bids_root = bids_root
+    raw_sources.inputs.bids_dir = bids_dir
 
     extra_entities = extra_entities or {}
 
@@ -718,7 +1009,7 @@ def init_ds_surfaces_wf(
 
     Parameters
     ----------
-    bids_root : :class:`str`
+    bids_dir : :class:`str`
         Root path of BIDS dataset
     output_dir : :class:`str`
         Directory in which to save derivatives
@@ -788,7 +1079,7 @@ def init_ds_surfaces_wf(
 
 def init_ds_surface_metrics_wf(
     *,
-    bids_root: str,
+    bids_dir: str,
     output_dir: str,
     metrics: List[str],
     name='ds_surface_metrics_wf',
@@ -798,7 +1089,7 @@ def init_ds_surface_metrics_wf(
 
     Parameters
     ----------
-    bids_root : :class:`str`
+    bids_dir : :class:`str`
         Root path of BIDS dataset
     output_dir : :class:`str`
         Directory in which to save derivatives
@@ -853,7 +1144,7 @@ def init_ds_surface_metrics_wf(
 
 def init_ds_grayord_metrics_wf(
     *,
-    bids_root: str,
+    bids_dir: str,
     output_dir: str,
     metrics: List[str],
     cifti_output: ty.Literal['91k', '170k'],
@@ -864,7 +1155,7 @@ def init_ds_grayord_metrics_wf(
 
     Parameters
     ----------
-    bids_root : :class:`str`
+    bids_dir : :class:`str`
         Root path of BIDS dataset
     output_dir : :class:`str`
         Directory in which to save derivatives
@@ -928,7 +1219,7 @@ def init_ds_grayord_metrics_wf(
 
 def init_ds_anat_volumes_wf(
     *,
-    bids_root: str,
+    bids_dir: str,
     output_dir: str,
     name='ds_anat_volumes_wf',
     tpm_labels=BIDS_TISSUE_ORDER,
@@ -944,6 +1235,10 @@ def init_ds_anat_volumes_wf(
                 'anat_mask',
                 'anat_dseg',
                 'anat_tpms',
+                # Additional modalities
+                't1ce_preproc',
+                't2w_preproc',
+                'flair_preproc',
                 # Template
                 'ref_file',
                 'anat2std_xfm',
@@ -957,7 +1252,7 @@ def init_ds_anat_volumes_wf(
     )
 
     raw_sources = pe.Node(niu.Function(function=_bids_relative), name='raw_sources')
-    raw_sources.inputs.bids_root = bids_root
+    raw_sources.inputs.bids_dir = bids_dir
 
     gen_ref = pe.Node(GenerateSamplingReference(), name='gen_ref', mem_gb=0.01)
 
@@ -983,6 +1278,49 @@ def init_ds_anat_volumes_wf(
         name='anat2std_tpms',
     )
 
+    # Resample additional modalities to standard space (conditional on input existence)
+    def _apply_transform_if_exists(input_image, reference_image, transforms):
+        """Apply transform only if input_image is not None."""
+        if input_image is None or input_image == 'None':
+            return None
+        from nipype.interfaces.ants import ApplyTransforms
+        at = ApplyTransforms(
+            dimension=3,
+            default_value=0,
+            float=True,
+            interpolation='LanczosWindowedSinc',
+        )
+        at.inputs.input_image = input_image
+        at.inputs.reference_image = reference_image
+        at.inputs.transforms = transforms
+        result = at.run()
+        return result.outputs.output_image
+
+    anat2std_t1ce = pe.Node(
+        niu.Function(
+            function=_apply_transform_if_exists,
+            input_names=['input_image', 'reference_image', 'transforms'],
+            output_names=['output_image'],
+        ),
+        name='anat2std_t1ce',
+    )
+    anat2std_t2w = pe.Node(
+        niu.Function(
+            function=_apply_transform_if_exists,
+            input_names=['input_image', 'reference_image', 'transforms'],
+            output_names=['output_image'],
+        ),
+        name='anat2std_t2w',
+    )
+    anat2std_flair = pe.Node(
+        niu.Function(
+            function=_apply_transform_if_exists,
+            input_names=['input_image', 'reference_image', 'transforms'],
+            output_names=['output_image'],
+        ),
+        name='anat2std_flair',
+    )
+
     ds_std_t1w = pe.Node(
         DerivativesDataSink(
             base_directory=output_dir,
@@ -993,6 +1331,43 @@ def init_ds_anat_volumes_wf(
         run_without_submitting=True,
     )
     ds_std_t1w.inputs.SkullStripped = True
+
+    ds_std_t1ce = pe.Node(
+        DerivativesDataSink(
+            base_directory=output_dir,
+            desc='preproc',
+            suffix='T1w',
+            acquisition='ce',
+            compress=True,
+        ),
+        name='ds_std_t1ce',
+        run_without_submitting=True,
+    )
+    ds_std_t1ce.inputs.SkullStripped = True
+
+    ds_std_t2w = pe.Node(
+        DerivativesDataSink(
+            base_directory=output_dir,
+            desc='preproc',
+            suffix='T2w',
+            compress=True,
+        ),
+        name='ds_std_t2w',
+        run_without_submitting=True,
+    )
+    ds_std_t2w.inputs.SkullStripped = True
+
+    ds_std_flair = pe.Node(
+        DerivativesDataSink(
+            base_directory=output_dir,
+            desc='preproc',
+            suffix='FLAIR',
+            compress=True,
+        ),
+        name='ds_std_flair',
+        run_without_submitting=True,
+    )
+    ds_std_flair.inputs.SkullStripped = True
 
     ds_std_mask = pe.Node(
         DerivativesDataSink(base_directory=output_dir, desc='brain', suffix='mask', compress=True),
@@ -1032,21 +1407,30 @@ def init_ds_anat_volumes_wf(
         (inputnode, anat2std_dseg, [('anat_dseg', 'input_image')]),
         (inputnode, anat2std_tpms, [('anat_tpms', 'input_image')]),
         (inputnode, gen_ref, [('anat_preproc', 'moving_image')]),
+        # Additional modalities (using Function nodes for conditional processing)
+        (inputnode, anat2std_t1ce, [('t1ce_preproc', 'input_image')]),
+        (inputnode, anat2std_t2w, [('t2w_preproc', 'input_image')]),
+        (inputnode, anat2std_flair, [('flair_preproc', 'input_image')]),
+        # DataSinks
         (anat2std_t1w, ds_std_t1w, [('output_image', 'in_file')]),
         (anat2std_mask, ds_std_mask, [('output_image', 'in_file')]),
         (anat2std_dseg, ds_std_dseg, [('output_image', 'in_file')]),
         (anat2std_tpms, ds_std_tpms, [('output_image', 'in_file')]),
+        # Additional modality DataSinks (conditional)
+        (anat2std_t1ce, ds_std_t1ce, [('output_image', 'in_file')]),
+        (anat2std_t2w, ds_std_t2w, [('output_image', 'in_file')]),
+        (anat2std_flair, ds_std_flair, [('output_image', 'in_file')]),
     ])  # fmt:skip
 
     workflow.connect(
         # Connect apply transforms nodes
         [
             (gen_ref, n, [('out_file', 'reference_image')])
-            for n in (anat2std_t1w, anat2std_mask, anat2std_dseg, anat2std_tpms)
+            for n in (anat2std_t1w, anat2std_mask, anat2std_dseg, anat2std_tpms, anat2std_t1ce, anat2std_t2w, anat2std_flair)
         ]
         + [
             (inputnode, n, [('anat2std_xfm', 'transforms')])
-            for n in (anat2std_t1w, anat2std_mask, anat2std_dseg, anat2std_tpms)
+            for n in (anat2std_t1w, anat2std_mask, anat2std_dseg, anat2std_tpms, anat2std_t1ce, anat2std_t2w, anat2std_flair)
         ]
         + [
             (inputnode, n, [
@@ -1055,7 +1439,7 @@ def init_ds_anat_volumes_wf(
                 ('cohort', 'cohort'),
                 ('resolution', 'resolution'),
             ])
-            for n in (ds_std_t1w, ds_std_mask, ds_std_dseg, ds_std_tpms)
+            for n in (ds_std_t1w, ds_std_mask, ds_std_dseg, ds_std_tpms, ds_std_t1ce, ds_std_t2w, ds_std_flair)
         ]
     )  # fmt:skip
 
@@ -1064,7 +1448,7 @@ def init_ds_anat_volumes_wf(
 
 def init_ds_fs_segs_wf(
     *,
-    bids_root: str,
+    bids_dir: str,
     output_dir: str,
     extra_entities: Optional[Dict] = None,
     name='ds_fs_segs_wf',
@@ -1074,7 +1458,7 @@ def init_ds_fs_segs_wf(
 
     Parameters
     ----------
-    bids_root : :obj:`str`
+    bids_dir : :obj:`str`
         Root path of BIDS dataset
     output_dir : :obj:`str`
         Directory in which to save derivatives
@@ -1106,7 +1490,7 @@ def init_ds_fs_segs_wf(
     )
 
     raw_sources = pe.Node(niu.Function(function=_bids_relative), name='raw_sources')
-    raw_sources.inputs.bids_root = bids_root
+    raw_sources.inputs.bids_dir = bids_dir
 
     extra_entities = extra_entities or {}
 
@@ -1182,7 +1566,7 @@ def init_template_iterator_wf(
     spacesource = pe.Node(SpaceDataSource(), name='spacesource', run_without_submitting=True)
     spacesource.iterables = (
         'in_tuple',
-        [(s.fullname, s.spec) for s in spaces.cached.get_standard(dim=(3,))],
+        [(s.fullname, s.spec) for s in spaces.get_standard(dim=(3,))],
     )
 
     gen_tplid = pe.Node(
@@ -1287,7 +1671,7 @@ def init_ds_surface_masks_wf(
     )
 
     sources = pe.Node(niu.Function(function=_bids_relative), name='sources')
-    sources.inputs.bids_root = output_dir
+    sources.inputs.bids_dir = output_dir
 
     select_files = pe.Node(
         KeySelect(fields=['mask_file', 'sources'], keys=['L', 'R']),
@@ -1327,7 +1711,7 @@ def init_ds_surface_masks_wf(
     return workflow
 
 
-def _bids_relative(in_files, bids_root):
+def _bids_relative(in_files, bids_dir):
     from pathlib import Path
 
     if not isinstance(in_files, (list, tuple)):
@@ -1335,7 +1719,7 @@ def _bids_relative(in_files, bids_root):
     ret = []
     for file in in_files:
         try:
-            ret.append(str(Path(file).relative_to(bids_root)))
+            ret.append(str(Path(file).relative_to(bids_dir)))
         except ValueError:
             ret.append(file)
     return in_files

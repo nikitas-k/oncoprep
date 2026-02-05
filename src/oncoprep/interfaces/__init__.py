@@ -3,7 +3,12 @@
 """OncoPrep interfaces and wrappers."""
 
 try:
-    from niworkflows.interfaces.bids import DerivativesDataSink
+    from niworkflows.interfaces.bids import DerivativesDataSink as _NiworkflowsDerivativesDataSink
+    
+    class DerivativesDataSink(_NiworkflowsDerivativesDataSink):
+        """DerivativesDataSink with out_path_base set to 'oncoprep'."""
+        out_path_base = 'oncoprep'
+    
     __all__ = ['DerivativesDataSink']
 except ImportError:
     __all__ = []
@@ -86,6 +91,7 @@ try:
         get_functional_files,
         validate_anatomical_coverage,
         get_subjects_sessions,
+        OncoprepBIDSDataGrabber,
     )
     __all__.extend([
         'validate_bids_dataset',
@@ -94,6 +100,7 @@ try:
         'get_functional_files',
         'validate_anatomical_coverage',
         'get_subjects_sessions',
+        'OncoprepBIDSDataGrabber',
     ])
 except ImportError:
     pass

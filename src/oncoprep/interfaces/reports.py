@@ -43,7 +43,7 @@ from niworkflows.interfaces.reportlets.base import _SVGReportCapableInputSpec
 SUBJECT_TEMPLATE = """\
 \t<ul class="elem-desc">
 \t\t<li>Subject ID: {subject_id}</li>
-\t\t<li>Structural images: {n_t1s:d} T1-weighted {t2w}</li>
+\t\t<li>Structural images: {n_t1s:d} T1-weighted {t2w}{t1ce}{flair_seg}</li>
 \t\t<li>Standard spaces: {output_spaces}</li>
 \t\t<li>FreeSurfer reconstruction: {freesurfer_status}</li>
 \t</ul>
@@ -93,6 +93,8 @@ class _SubjectSummaryInputSpec(BaseInterfaceInputSpec):
 
     t1w = InputMultiObject(File(exists=True), desc='T1w structural images')
     t2w = InputMultiObject(File(exists=True), desc='T2w structural images')
+    t1ce = InputMultiObject(File(exists=True), desc='T1ce contrast-enhanced images')
+    flair = InputMultiObject(File(exists=True), desc='FLAIR images')
     subjects_dir = Directory(desc='FreeSurfer subjects directory')
     subject_id = Str(desc='Subject ID')
     output_spaces = InputMultiObject(Str, desc='list of standard spaces')
@@ -141,7 +143,15 @@ class SubjectSummary(SummaryInterface):
 
         t2w_seg = ''
         if self.inputs.t2w:
-            t2w_seg = f'(+ {len(self.inputs.t2w):d} T2-weighted)'
+            t2w_seg = f', {len(self.inputs.t2w):d} T2w'
+
+        t1ce_seg = ''
+        if isdefined(self.inputs.t1ce) and self.inputs.t1ce:
+            t1ce_seg = f', {len(self.inputs.t1ce):d} T1ce'
+
+        flair_seg = ''
+        if isdefined(self.inputs.flair) and self.inputs.flair:
+            flair_seg = f', {len(self.inputs.flair):d} FLAIR'
 
         output_spaces = self.inputs.output_spaces
         if not isdefined(output_spaces):
@@ -153,6 +163,8 @@ class SubjectSummary(SummaryInterface):
             subject_id=self.inputs.subject_id,
             n_t1s=len(self.inputs.t1w),
             t2w=t2w_seg,
+            t1ce=t1ce_seg,
+            flair_seg=flair_seg,
             output_spaces=output_spaces,
             freesurfer_status=freesurfer_status,
         )

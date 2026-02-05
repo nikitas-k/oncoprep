@@ -214,7 +214,7 @@ def run_batch(opts) -> int:
     tasks = []
     for subject_dir in subject_dirs:
         subject_id = subject_dir.name
-        tasks.append((subject_dir, opts.output_dir, subject_id, opts.session, opts.converter))
+        tasks.append((subject_dir, opts.output_dir, subject_id, opts.session, opts.converter, opts.overwrite))
     
     # Run conversions
     successful = 0
@@ -234,7 +234,7 @@ def run_batch(opts) -> int:
                 LOGGER.warning(f"✗ sub-{subject_id}")
     else:
         # Sequential execution
-        for subject_dir, bids_dir, subject_id, session, converter in tasks:
+        for subject_dir, bids_dir, subject_id, session, converter, overwrite in tasks:
             try:
                 result = convert_subject_dicoms_to_bids(
                     source_dir=subject_dir,
@@ -242,6 +242,7 @@ def run_batch(opts) -> int:
                     subject=subject_id,
                     session=session,
                     conversion_tool=converter,
+                    overwrite=overwrite,
                 )
                 if result:
                     successful += 1
@@ -273,7 +274,7 @@ def run_batch(opts) -> int:
 
 def _convert_subject_wrapper(args: Tuple) -> Tuple[str, bool]:
     """Wrapper for multiprocessing pool."""
-    subject_dir, bids_dir, subject_id, session, converter = args
+    subject_dir, bids_dir, subject_id, session, converter, overwrite = args
     
     try:
         result = convert_subject_dicoms_to_bids(
@@ -282,6 +283,7 @@ def _convert_subject_wrapper(args: Tuple) -> Tuple[str, bool]:
             subject=subject_id,
             session=session,
             conversion_tool=converter,
+            overwrite=overwrite,
         )
         return (subject_id, result)
     except Exception as e:
