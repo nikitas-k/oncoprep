@@ -12,7 +12,7 @@ ARG WORKBENCH_VERSION=2.0.1
 # ---------------------------------------------------------------------------
 # Stage 1 — System dependencies & neuroimaging tools
 # ---------------------------------------------------------------------------
-FROM --platform=linux/amd64 python:${PYTHON_VERSION}-slim AS base
+FROM python:${PYTHON_VERSION}-slim AS base
 
 LABEL maintainer="OncoPrep Contributors"
 LABEL org.opencontainers.image.title="OncoPrep"
@@ -144,10 +144,6 @@ ENV OMP_NUM_THREADS=1 \
 
 # Create standard data directories
 RUN mkdir -p /data/bids /data/output /data/work /data/dicom
-
-# Copy any remaining project files (e.g. examples, configs)
-COPY examples/ ./examples/
-COPY tests/ ./tests/
 
 # Healthcheck — verify core tools are reachable
 HEALTHCHECK --interval=60s --timeout=10s --retries=3 \
