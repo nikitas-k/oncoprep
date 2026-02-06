@@ -212,7 +212,7 @@ def init_anat_preproc_wf(
     workflow = Workflow(name=name)
     inputnode = pe.Node(
         niu.IdentityInterface(
-            fields=['t1w', 't1ce', 't2w', 'flair', 'subjects_dir', 'subject_id']
+            fields=['t1w', 't1ce', 't2w', 'flair', 'subjects_dir', 'subject_id', 'tumor_dseg']
         ),
         name='inputnode',
     )
@@ -224,6 +224,7 @@ def init_anat_preproc_wf(
                 'subject_id',
                 #'t1w_defaced',
                 't1w_preproc',
+                't1w_brain',
                 't1w_mask',
                 't1w_dseg',
                 't1w_tpms',
@@ -238,6 +239,7 @@ def init_anat_preproc_wf(
                 #'flair_defaced',
                 'flair_preproc',
                 #'flair_tpms',
+                'tumor_dseg',
             ]
         ),
         name='outputnode',
@@ -279,6 +281,7 @@ def init_anat_preproc_wf(
             ('outputnode.template', 'template'),
             ('outputnode.subjects_dir', 'subjects_dir'),
             ('outputnode.subject_id', 'subject_id'),
+            ('outputnode.t1w_brain', 't1w_brain'),
             ('outputnode.t1w_defaced', 't1w_defaced'),
             ('outputnode.t1w_preproc', 't1w_preproc'),
             ('outputnode.t1w_mask', 't1w_mask'),
@@ -520,6 +523,7 @@ BIDS dataset.
                 # Primary derivatives
                 't1w_defaced',
                 't1w_preproc',
+                't1w_brain',
                 't1ce_defaced',
                 't1ce_preproc',
                 't2w_defaced',
@@ -974,7 +978,7 @@ brain-extracted T1w using `fast` [FSL {fsl_ver}; RRID:SCR_002823, @fsl_fast].
     )
 
     if t1ce or t2w or flair:
-        LOGGER.info('ANAT Stage 4a: Multi-modal co-registration and preprocessing')
+        LOGGER.info('ANAT Stage 4: Multi-modal co-registration and preprocessing')
         desc += "\n\nAdditional modalities were rigidly registered to the T1w reference, "
         desc += "skull-stripped using the T1w brain mask, and bias-field corrected with N4.\n"
 
@@ -1163,10 +1167,10 @@ brain-extracted T1w using `fast` [FSL {fsl_ver}; RRID:SCR_002823, @fsl_fast].
     anat2std_buffer.inputs.in1 = [xfms['forward'] for xfms in found_xfms.values()]
     std2anat_buffer.inputs.in1 = [xfms['reverse'] for xfms in found_xfms.values()]
 
-    # Stage 4b: Spatial normalization (if needed)
+    # Stage 5: Spatial normalization (if needed)
     # ============================================
     if templates:
-        LOGGER.info(f'ANAT Stage 4b: Registering to template(s): {templates}')
+        LOGGER.info(f'ANAT Stage 5: Registering to template(s): {templates}')
         register_template_wf = init_multimodal_template_registration_wf(
             sloppy=sloppy,
             omp_nthreads=omp_nthreads,
@@ -1224,7 +1228,7 @@ brain-extracted T1w using `fast` [FSL {fsl_ver}; RRID:SCR_002823, @fsl_fast].
             (ds_template_registration_wf, anat2std_buffer, [('outputnode.anat2std_xfm', 'in2')]),
          ])
     if found_xfms:
-        LOGGER.info(f'ANAT Stage 4b: Found precomputed transforms for {list(found_xfms)}')
+        LOGGER.info(f'ANAT Stage 5: Found precomputed transforms for {list(found_xfms)}')
 
     # Connect additional modality outputs to outputnode
     workflow.connect([
@@ -1232,6 +1236,9 @@ brain-extracted T1w using `fast` [FSL {fsl_ver}; RRID:SCR_002823, @fsl_fast].
             ('t1ce_preproc', 't1ce_preproc'),
             ('t2w_preproc', 't2w_preproc'),
             ('flair_preproc', 'flair_preproc'),
+        ]),
+        (refined_buffer, outputnode, [
+            ('t1w_brain', 't1w_brain'),
         ]),
     ])
 
@@ -1241,10 +1248,10 @@ brain-extracted T1w using `fast` [FSL {fsl_ver}; RRID:SCR_002823, @fsl_fast].
     workflow.__desc__ = desc
     return workflow
 
-    # # Stage 4.5: Optional defacing with mri_deface
+    # # Stage 6: Optional defacing with mri_deface
     # # ============================================
     # if defacing:
-    #     LOGGER.info('ANAT Stage 4.5: Defacing anatomical images with mri_deface')
+    #     LOGGER.info('ANAT Stage 6: Defacing anatomical images with mri_deface')
 
     #     # Deface T1w
     #     deface_t1w = pe.Node(
@@ -1312,7 +1319,7 @@ brain-extracted T1w using `fast` [FSL {fsl_ver}; RRID:SCR_002823, @fsl_fast].
     #     else:
     #         deface_buffer.inputs.flair_defaced = None
     # else:
-    #     LOGGER.info('ANAT Stage 4.5: Skipping defacing (defacing=False)')
+    #     LOGGER.info('ANAT Stage 6: Skipping defacing (defacing=False)')
     #     deface_buffer = pe.Node(
     #         niu.IdentityInterface(fields=['t1w_defaced', 't1ce_defaced', 't2w_defaced', 'flair_defaced']),
     #         name='deface_buffer',

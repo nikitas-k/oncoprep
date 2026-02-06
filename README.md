@@ -38,6 +38,21 @@ Generate a report stub:
 oncoprep /path/to/bids /path/to/derivatives participant --participant-label sub-001 --reports-only
 ```
 
+## Segmentation
+
+Run preprocessing pipeline and segmentation (with ensemble consensus voting)
+
+```bash
+# Ensemble mode, slower, needs GPU (all models + fusion)
+oncoprep /path/to/bids /path/to/derivatives participant --participant-label sub-001 --run-segmentation
+
+# Default model, CPU only, faster (econib 2018)
+oncoprep /path/to/bids /path/to/derivatives participant --participant-label sub-001 --run-segmentation --default-seg
+
+# Custom model path
+oncoprep /path/to/bids /path/to/derivatives participant --participant-label sub-001 --run-segmentation --seg-model-path /path/to/model
+```
+
 ## Development
 
 ```bash

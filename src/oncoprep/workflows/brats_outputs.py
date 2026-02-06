@@ -11,7 +11,29 @@ from pathlib import Path
 from nipype.interfaces import utility as niu
 from nipype.pipeline import engine as pe
 from niworkflows.engine import Workflow
-from niworkflows.interfaces.bids import DerivativesDataSink
+
+from ..interfaces import DerivativesDataSink
+
+
+def _check_seg_file(seg_file):
+    """Check if segmentation file is valid and exists on disk.
+    
+    Returns the file path if valid and exists, raises RuntimeError otherwise.
+    This allows the workflow to skip downstream nodes gracefully.
+    """
+    import os
+    import logging
+    LOGGER = logging.getLogger('nipype.workflow')
+    
+    if seg_file is None or seg_file == 'None' or str(seg_file) == 'None':
+        LOGGER.warning("Segmentation file is None, skipping derivatives save")
+        raise RuntimeError("Segmentation failed - no output file to save")
+    
+    if not os.path.isfile(seg_file):
+        LOGGER.warning(f"Segmentation file does not exist: {seg_file}")
+        raise RuntimeError(f"Segmentation file not found: {seg_file}")
+    
+    return seg_file
 
 
 def init_ds_tumor_seg_wf(
@@ -20,6 +42,11 @@ def init_ds_tumor_seg_wf(
     name: str = 'ds_tumor_seg_wf',
 ) -> Workflow:
     """Save tumor segmentation in BIDS derivatives format.
+
+    Saves three versions of the tumor segmentation:
+    - Raw model output (label-tumor)
+    - Old BraTS labels 2017-2020 (label-tumorOld): 1=NCR, 2=ED, 3=ET, 4=RC
+    - New derived labels 2021+ (label-tumorNew): 1=ET, 2=TC, 3=WT, 4=NETC, 5=SNFH, 6=RC
 
     Parameters
     ----------
@@ -33,43 +60,132 @@ def init_ds_tumor_seg_wf(
     source_file
         Input anatomical image
     tumor_seg
-        Tumor segmentation map (native space)
+        Raw tumor segmentation map (native space)
+    tumor_seg_old
+        Tumor segmentation with old BraTS labels
+    tumor_seg_new
+        Tumor segmentation with new derived labels
 
     Outputs
     -------
     tumor_seg_file
-        Path to saved tumor segmentation
+        Path to saved raw tumor segmentation
+    tumor_seg_old_file
+        Path to saved old labels segmentation
+    tumor_seg_new_file
+        Path to saved new labels segmentation
 
     """
     workflow = Workflow(name=name)
 
     inputnode = pe.Node(
-        niu.IdentityInterface(fields=['source_file', 'tumor_seg']),
+        niu.IdentityInterface(fields=[
+            'source_file',
+            'tumor_seg',
+            'tumor_seg_old',
+            'tumor_seg_new',
+        ]),
         name='inputnode',
     )
     outputnode = pe.Node(
-        niu.IdentityInterface(fields=['tumor_seg_file']),
+        niu.IdentityInterface(fields=[
+            'tumor_seg_file',
+            'tumor_seg_old_file',
+            'tumor_seg_new_file',
+        ]),
         name='outputnode',
     )
 
-    # Use DerivativesDataSink with proper BIDS entity specification
+    # Raw tumor segmentation (model output)
     ds_tumor_seg = pe.Node(
         DerivativesDataSink(
             check_hdr=False,
             desc='tumor',
             suffix='dseg',
+            compress=True,
         ),
         name='ds_tumor_seg',
         run_without_submitting=True,
     )
     ds_tumor_seg.inputs.base_directory = output_dir
+    ds_tumor_seg.inputs.out_path_base = 'oncoprep'
+    ds_tumor_seg.inputs.label = 'tumor'
+
+    # Old BraTS labels (2017-2020)
+    ds_tumor_seg_old = pe.Node(
+        DerivativesDataSink(
+            check_hdr=False,
+            desc='tumorOld',
+            suffix='dseg',
+            compress=True,
+        ),
+        name='ds_tumor_seg_old',
+        run_without_submitting=True,
+    )
+    ds_tumor_seg_old.inputs.base_directory = output_dir
+    ds_tumor_seg_old.inputs.out_path_base = 'oncoprep'
+    ds_tumor_seg_old.inputs.label = 'tumorOld'
+
+    # New derived labels (2021+)
+    ds_tumor_seg_new = pe.Node(
+        DerivativesDataSink(
+            check_hdr=False,
+            desc='tumorNew',
+            suffix='dseg',
+            compress=True,
+        ),
+        name='ds_tumor_seg_new',
+        run_without_submitting=True,
+    )
+    ds_tumor_seg_new.inputs.base_directory = output_dir
+    ds_tumor_seg_new.inputs.out_path_base = 'oncoprep'
+    ds_tumor_seg_new.inputs.label = 'tumorNew'
+
+    # Add filter nodes to validate segmentation files before saving
+    # These will raise RuntimeError if seg_file is None, allowing graceful failure
+    check_tumor_seg = pe.Node(
+        niu.Function(
+            function=_check_seg_file,
+            input_names=['seg_file'],
+            output_names=['seg_file'],
+        ),
+        name='check_tumor_seg',
+    )
+
+    check_tumor_seg_old = pe.Node(
+        niu.Function(
+            function=_check_seg_file,
+            input_names=['seg_file'],
+            output_names=['seg_file'],
+        ),
+        name='check_tumor_seg_old',
+    )
+
+    check_tumor_seg_new = pe.Node(
+        niu.Function(
+            function=_check_seg_file,
+            input_names=['seg_file'],
+            output_names=['seg_file'],
+        ),
+        name='check_tumor_seg_new',
+    )
 
     workflow.connect([
-        (inputnode, ds_tumor_seg, [
-            ('source_file', 'source_file'),
-            ('tumor_seg', 'in_file'),
-        ]),
+        # Filter then save raw segmentation
+        (inputnode, check_tumor_seg, [('tumor_seg', 'seg_file')]),
+        (inputnode, ds_tumor_seg, [('source_file', 'source_file')]),
+        (check_tumor_seg, ds_tumor_seg, [('seg_file', 'in_file')]),
         (ds_tumor_seg, outputnode, [('out_file', 'tumor_seg_file')]),
+        # Filter then save old labels
+        (inputnode, check_tumor_seg_old, [('tumor_seg_old', 'seg_file')]),
+        (inputnode, ds_tumor_seg_old, [('source_file', 'source_file')]),
+        (check_tumor_seg_old, ds_tumor_seg_old, [('seg_file', 'in_file')]),
+        (ds_tumor_seg_old, outputnode, [('out_file', 'tumor_seg_old_file')]),
+        # Filter then save new labels
+        (inputnode, check_tumor_seg_new, [('tumor_seg_new', 'seg_file')]),
+        (inputnode, ds_tumor_seg_new, [('source_file', 'source_file')]),
+        (check_tumor_seg_new, ds_tumor_seg_new, [('seg_file', 'in_file')]),
+        (ds_tumor_seg_new, outputnode, [('out_file', 'tumor_seg_new_file')]),
     ])
 
     return workflow
@@ -330,7 +446,7 @@ def init_ds_tumor_roi_stats_wf(
 
     compute_stats = pe.Node(
         niu.Function(
-            function=_compute_tumor_roi_stats,
+            function=_compute_tumor_roi_stats, #PLACEHOLDER: replace with PyRadiomics-based functions
             input_names=['anatomical_image', 'tumor_mask', 'tumor_seg', 'source_files', 'output_dir'],
             output_names=['stats_file'],
         ),

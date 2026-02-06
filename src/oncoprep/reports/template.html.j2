@@ -1,31 +1,245 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <title>OncoPrep Report</title>
-    <style>
-      body { font-family: Arial, sans-serif; margin: 24px; }
-      header { margin-bottom: 24px; }
-      .card { border: 1px solid #ddd; padding: 16px; border-radius: 8px; }
-    </style>
-  </head>
-  <body>
-    <header>
-      <h1>OncoPrep Processing Report</h1>
-      <p>Pipeline: {{ pipeline_name }}</p>
-    </header>
-    <div class="card">
-      <p><strong>BIDS root:</strong> {{ bids_root }}</p>
-      <p><strong>Derivatives root:</strong> {{ derivatives_root }}</p>
-      <p><strong>Subject:</strong> {{ subject_id or 'all' }}</p>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OncoPrep Report — {{ subject_id }}</title>
+  <style>
+    :root {
+      --primary: #2c3e50;
+      --accent: #3498db;
+      --bg: #f8f9fa;
+      --card-bg: #ffffff;
+      --border: #dee2e6;
+      --text: #212529;
+      --text-muted: #6c757d;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                   "Helvetica Neue", Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      padding: 0;
+    }
+    header {
+      background: var(--primary);
+      color: #fff;
+      padding: 24px 32px;
+      margin-bottom: 24px;
+    }
+    header h1 {
+      font-size: 1.6rem;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    header .subtitle {
+      font-size: 0.95rem;
+      opacity: 0.85;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 24px 48px;
+    }
+    .section {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-bottom: 20px;
+      overflow: hidden;
+    }
+    .section-header {
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+      padding: 14px 20px;
+      background: var(--card-bg);
+      border-bottom: 1px solid var(--border);
+      user-select: none;
+    }
+    .section-header:hover { background: #f1f3f5; }
+    .section-header h2 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      flex: 1;
+    }
+    .section-header .toggle {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      transition: transform 0.2s;
+    }
+    .section-header.collapsed .toggle { transform: rotate(-90deg); }
+    .section-body {
+      padding: 16px 20px;
+      overflow-x: auto;
+    }
+    .section-body.hidden { display: none; }
+    .section-body .html-fragment { margin-bottom: 12px; }
+    .section-body .html-fragment ul {
+      list-style: disc;
+      margin-left: 20px;
+    }
+    .section-body .html-fragment li { margin-bottom: 4px; }
+    .section-body .html-fragment code {
+      background: #e9ecef;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 0.88em;
+    }
+    .figure-wrapper {
+      margin: 8px 0;
+      text-align: center;
+    }
+    .figure-wrapper svg {
+      max-width: 100%;
+      height: auto;
+    }
+    .figure-label {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+      text-align: left;
+    }
+    .desc-block {
+      font-size: 0.93rem;
+      color: var(--text);
+      line-height: 1.7;
+      padding: 12px 0;
+    }
+    .badge {
+      display: inline-block;
+      background: var(--accent);
+      color: #fff;
+      font-size: 0.75rem;
+      padding: 2px 8px;
+      border-radius: 4px;
+      margin-left: 8px;
+      vertical-align: middle;
+    }
+    footer {
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.82rem;
+      padding: 24px 0;
+    }
+    @media (max-width: 768px) {
+      header { padding: 16px 20px; }
+      .container { padding: 0 12px 32px; }
+      .section-body { padding: 12px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>OncoPrep &mdash; {{ subject_id }}</h1>
+    <div class="subtitle">Neuro-oncology MRI preprocessing report</div>
+  </header>
+
+  <div class="container">
+
+    <!-- Workflow Description -->
+    {% if workflow_desc %}
+    <div class="section">
+      <div class="section-header" onclick="toggleSection(this)">
+        <h2>Workflow Description</h2>
+        <span class="toggle">&#9660;</span>
+      </div>
+      <div class="section-body">
+        <div class="desc-block">{{ workflow_desc }}</div>
+      </div>
     </div>
-    <section>
-      <h2>Quality Notes</h2>
-      <ul>
-        <li>Sequence missingness checks should be listed here.</li>
-        <li>Vendor harmonization summary should be listed here.</li>
-        <li>Defacing status should be listed here.</li>
-      </ul>
-    </section>
-  </body>
+    {% endif %}
+
+    <!-- Summary -->
+    {% if summary_html %}
+    <div class="section">
+      <div class="section-header" onclick="toggleSection(this)">
+        <h2>Summary</h2>
+        <span class="toggle">&#9660;</span>
+      </div>
+      <div class="section-body">
+        <div class="html-fragment">{{ summary_html }}</div>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Anatomical Preprocessing -->
+    {% if conform_html or dseg_svg %}
+    <div class="section">
+      <div class="section-header" onclick="toggleSection(this)">
+        <h2>Anatomical Preprocessing</h2>
+        <span class="toggle">&#9660;</span>
+      </div>
+      <div class="section-body">
+        {% if conform_html %}
+        <div class="figure-label">Conformance check</div>
+        <div class="html-fragment">{{ conform_html }}</div>
+        {% endif %}
+        {% if dseg_svg %}
+        <div class="figure-label">Brain mask and tissue segmentation</div>
+        <div class="figure-wrapper">{{ dseg_svg }}</div>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Spatial Normalization -->
+    {% if norm_figures %}
+    <div class="section">
+      <div class="section-header" onclick="toggleSection(this)">
+        <h2>Spatial Normalization</h2>
+        <span class="toggle">&#9660;</span>
+      </div>
+      <div class="section-body">
+        {% for label, svg_content in norm_figures %}
+        <div class="figure-label">{{ label }}</div>
+        <div class="figure-wrapper">{{ svg_content }}</div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Tumor Segmentation -->
+    {% if tumor_svg %}
+    <div class="section">
+      <div class="section-header" onclick="toggleSection(this)">
+        <h2>Tumor Segmentation<span class="badge">BraTS</span></h2>
+        <span class="toggle">&#9660;</span>
+      </div>
+      <div class="section-body">
+        <div class="figure-label">Tumor region contour overlay on T1w</div>
+        <div class="figure-wrapper">{{ tumor_svg }}</div>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- About -->
+    {% if about_html %}
+    <div class="section">
+      <div class="section-header" onclick="toggleSection(this)">
+        <h2>About</h2>
+        <span class="toggle">&#9660;</span>
+      </div>
+      <div class="section-body">
+        <div class="html-fragment">{{ about_html }}</div>
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+
+  <footer>
+    Generated by <strong>OncoPrep {{ version }}</strong>
+  </footer>
+
+  <script>
+    function toggleSection(header) {
+      var body = header.nextElementSibling;
+      body.classList.toggle('hidden');
+      header.classList.toggle('collapsed');
+    }
+  </script>
+</body>
 </html>

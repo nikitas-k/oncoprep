@@ -28,6 +28,7 @@ dependencies = [
   "niworkflows",
   "templateflow",
   "dcm2niix",
+  "picsl-greedy"
 ]
 
 [project.optional-dependencies]

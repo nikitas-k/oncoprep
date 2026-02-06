@@ -81,6 +81,12 @@ def init_report_wf(
         ),
         name='inputnode',
     )
+    # Set default values for optional inputs
+    inputnode.inputs.anat_dseg = None
+    inputnode.inputs.report_dict = None
+    inputnode.inputs.bids_metadata = None
+    inputnode.inputs.conversion_dict = None
+    
     outputnode = pe.Node(
         niu.IdentityInterface(fields=['report_file']),
         name='outputnode',
@@ -139,7 +145,7 @@ def init_report_wf(
 def _generate_report_metrics(
     anat_preproc,
     anat_mask,
-    anat_dseg,
+    anat_dseg=None,
     report_dict=None,
     conversion_dict=None,
 ):
@@ -151,7 +157,7 @@ def _generate_report_metrics(
         Path to preprocessed anatomical image
     anat_mask : :obj:`str`
         Path to brain mask
-    anat_dseg : :obj:`str`
+    anat_dseg : :obj:`str` or None
         Path to tissue segmentation
     report_dict : :obj:`dict` or None
         Dictionary of additional metrics
@@ -165,7 +171,10 @@ def _generate_report_metrics(
 
     """
     import numpy as np
+    import nibabel as nb
+    from oncoprep.utils.logging import get_logger
 
+    logger = get_logger(__name__)
     metrics_dict = report_dict or {}
 
     # Add conversion metrics if provided
@@ -186,8 +195,11 @@ def _generate_report_metrics(
         mask_img = nb.load(anat_mask)
         mask_data = mask_img.get_fdata() > 0
 
-        dseg_img = nb.load(anat_dseg)
-        dseg_data = dseg_img.get_fdata()
+        if anat_dseg:
+            dseg_img = nb.load(anat_dseg)
+            dseg_data = dseg_img.get_fdata()
+        else:
+            dseg_data = None
 
         # Compute basic statistics
         metrics_dict.update({
@@ -201,17 +213,18 @@ def _generate_report_metrics(
         })
 
         # Tissue statistics
-        tissue_labels = {1: 'GM', 2: 'WM', 3: 'CSF'}
-        for label, tissue_name in tissue_labels.items():
-            tissue_mask = dseg_data == label
-            if tissue_mask.any():
-                metrics_dict[f'{tissue_name}_volume_mm3'] = float(
-                    np.sum(tissue_mask)
-                    * np.prod(anat_img.header.get_zooms()[:3])
-                )
+        if dseg_data is not None:
+            tissue_labels = {1: 'GM', 2: 'WM', 3: 'CSF'}
+            for label, tissue_name in tissue_labels.items():
+                tissue_mask = dseg_data == label
+                if tissue_mask.any():
+                    metrics_dict[f'{tissue_name}_volume_mm3'] = float(
+                        np.sum(tissue_mask)
+                        * np.prod(anat_img.header.get_zooms()[:3])
+                    )
 
     except Exception as e:
-        LOGGER.warning(f"Could not compute anatomical metrics: {e}")
+        logger.warning(f"Could not compute anatomical metrics: {e}")
 
     return metrics_dict
 

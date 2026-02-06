@@ -40,6 +40,9 @@ from niworkflows.interfaces.bids import BIDSInfo
 from niworkflows.utils.misc import fix_multi_T1w_source_name
 from bids.layout import Query
 
+from .outputs import init_anat_reports_wf
+from ..utils.labels import split_seg_labels
+
 # Custom BIDS queries for OncoPrep (adds t1ce for neuro-oncology)
 # Uses ceagent entity per BIDS spec: T1ce = T1w with contrast agent (e.g., gadolinium)
 import copy
@@ -60,13 +63,8 @@ ONCOPREP_BIDS_QUERIES['t1w'] = {
 }
 
 from oncoprep import __version__
-from oncoprep.workflows.preproc import build_preproc_workflow
-from oncoprep.workflows.outputs import init_ds_mask_wf, init_ds_modalities_wf, init_ds_template_wf
-from oncoprep.workflows.reports import init_report_wf
-from oncoprep.workflows.metrics import (
-    init_qa_metrics_wf,
-    init_snr_metrics_wf,
-)
+from oncoprep.workflows.segment import init_anat_seg_wf
+from oncoprep.workflows.brats_outputs import init_ds_tumor_seg_wf
 from ..interfaces import DerivativesDataSink, OncoprepBIDSDataGrabber
 from ..interfaces.reports import SubjectSummary, AboutSummary
 from .anatomical import init_anat_preproc_wf
@@ -94,7 +92,9 @@ def init_oncoprep_wf(
     output_spaces: Optional[list] = None,
     use_gpu: bool = False,
     deface: bool = False,
-    skip_segmentation: bool = True,
+    run_segmentation: bool = False,
+    seg_model_path: Optional[Path] = None,
+    default_seg: bool = False,
     sloppy: bool = False,
 ) -> Workflow:
     """
@@ -136,8 +136,8 @@ def init_oncoprep_wf(
         Enable GPU acceleration if available
     deface : bool
         Apply mri_deface to remove facial features for privacy (default: False)
-    skip_segmentation : bool
-        Skip tumor segmentation step (default: True)
+    run_segmentation : bool
+        Run tumor segmentation step (default: False, requires Docker with GPU)
     sloppy : bool
         Use faster settings for testing
 
@@ -201,7 +201,9 @@ to workflows in *OncoPrep*'s documentation]\
             output_spaces=output_spaces,
             use_gpu=use_gpu,
             deface=deface,
-            skip_segmentation=skip_segmentation,
+            run_segmentation=run_segmentation,
+            seg_model_path=seg_model_path,
+            default_seg=default_seg,
             sloppy=sloppy,
             name=name,
         )
@@ -238,7 +240,9 @@ def init_single_subject_wf(
     output_spaces: Optional[list] = None,
     use_gpu: bool = False,
     deface: bool = False,
-    skip_segmentation: bool = True,
+    run_segmentation: bool = False,
+    seg_model_path: Optional[Path] = None,
+    default_seg: bool = False,
     sloppy: bool = False,
     name: str = 'single_subject_wf',
     debug=False,
@@ -299,8 +303,8 @@ def init_single_subject_wf(
         Enable GPU acceleration
     deface : bool
         Apply mri_deface to remove facial features for privacy (default: False)
-    skip_segmentation : bool
-        Skip segmentation
+    run_segmentation : bool
+        Run tumor segmentation (default: False, requires Docker with GPU)
     sloppy : bool
         Use faster settings
     name : str
@@ -450,14 +454,142 @@ to workflows in *OncoPrep*'s documentation]\
         (about, ds_report_about, [('out_report', 'in_file')]),
     ])
 
-    # if not skip_segmentation:
-    #     anat_seg_wf = init_anat_seg_wf(
+    # Tumor segmentation workflow (optional)
+    if run_segmentation:
+        LOGGER.info('ANAT Stage 6: Initializing tumor segmentation workflow (run_segmentation=True)')
+        anat_seg_wf = init_anat_seg_wf(
+            output_dir=output_dir,
+            use_gpu=use_gpu,
+            model_path=seg_model_path,
+            default_model=default_seg,
+            sloppy=sloppy,
+            name='anat_seg_wf',
+        )
+        
+        # Datasink for tumor segmentation output
+        ds_tumor_seg_wf = init_ds_tumor_seg_wf(
+            output_dir=str(output_dir),
+            name='ds_tumor_seg_wf',
+        )
 
-    #     ) # TODO: segmentation workflow
-    #     workflow.connect([
-    #         (anat_preproc_wf, anat_seg_wf, [('outputnode.brain_mask', 'inputnode.brain_mask'),
-    #                                     ('outputnode.t1w_preproc', 'inputnode.t1w_preproc')]),
-    #     ])
+        workflow.connect([
+            # Source file for BIDS derivatives
+            (bidssrc, anat_seg_wf, [
+                (('t1w', fix_multi_T1w_source_name), 'inputnode.source_file'),
+            ]),
+            # Connect preprocessed modalities from anat_preproc_wf to segmentation
+            (anat_preproc_wf, anat_seg_wf, [
+                ('outputnode.t1w_brain', 'inputnode.t1w_preproc'),
+                ('outputnode.t1ce_preproc', 'inputnode.t1ce_preproc'),
+                ('outputnode.t2w_preproc', 'inputnode.t2w_preproc'),
+                ('outputnode.flair_preproc', 'inputnode.flair_preproc'),
+                ('outputnode.t1w_mask', 'inputnode.brain_mask'),
+            ]),
+            # Save tumor segmentation to BIDS derivatives
+            (bidssrc, ds_tumor_seg_wf, [
+                (('t1w', fix_multi_T1w_source_name), 'inputnode.source_file'),
+            ]),
+            (anat_seg_wf, ds_tumor_seg_wf, [
+                ('outputnode.tumor_seg', 'inputnode.tumor_seg'),
+                ('outputnode.tumor_seg_old', 'inputnode.tumor_seg_old'),
+                ('outputnode.tumor_seg_new', 'inputnode.tumor_seg_new'),
+            ]),
+        ])
+
+        # Tumor segmentation report (runs after segmentation, outside anat_preproc_wf to avoid cycle)
+        split_seg = pe.Node(
+            niu.Function(
+                function=split_seg_labels,
+                input_names=['seg_file'],
+                output_names=['mask_files'],
+            ),
+            name='split_seg_labels',
+        )
+
+        from ..interfaces.reports import TumorROIsPlot
+        tumor_rpt = pe.Node(
+            TumorROIsPlot(
+                colors=['red', 'gold', 'lime', 'cyan'],
+                levels=[0.5],
+                legend_labels=[
+                    ('red', 'NCR \u2014 Necrotic Core'),
+                    ('gold', 'ED \u2014 Peritumoral Edema'),
+                    ('lime', 'ET \u2014 Enhancing Tumor'),
+                    ('cyan', 'RC \u2014 Resection Cavity'),
+                ],
+            ),
+            name='tumor_rpt',
+        )
+
+        ds_tumor_dseg_report = pe.Node(
+            DerivativesDataSink(
+                base_directory=str(output_dir),
+                desc='tumor',
+                suffix='dseg',
+                datatype='figures',
+            ),
+            name='ds_tumor_dseg_report',
+            run_without_submitting=True,
+        )
+        workflow.connect([
+            (anat_preproc_wf, tumor_rpt, [
+                ('outputnode.t1w_preproc', 'in_file'),
+                ('outputnode.t1w_mask', 'in_mask'),
+            ]),
+            (anat_seg_wf, split_seg, [
+                ('outputnode.tumor_seg_old', 'seg_file'),
+            ]),
+            (split_seg, tumor_rpt, [
+                ('mask_files', 'in_rois'),
+            ]),
+            (bidssrc, ds_tumor_dseg_report, [
+                (('t1w', fix_multi_T1w_source_name), 'source_file'),
+            ]),
+            (tumor_rpt, ds_tumor_dseg_report, [('out_report', 'in_file')]),
+        ])
+
+    # ---- Collate all figures into a single sub-<label>.html report ----
+    from ..utils.collate import collate_subject_report as _collate_fn
+
+    # Merge sentinel signals from every report-writing datasink so the
+    # collation node runs only after ALL figures have been written.
+    n_sentinels = 4 if run_segmentation else 3
+    report_sentinel_merge = pe.Node(
+        niu.Merge(n_sentinels, no_flatten=True),
+        name='report_sentinel_merge',
+    )
+
+    collate_report = pe.Node(
+        niu.Function(
+            function=_collate_fn,
+            input_names=['output_dir', 'subject_id', 'version',
+                         'report_files', 'workflow_desc'],
+            output_names=['out_report'],
+        ),
+        name='collate_report',
+        run_without_submitting=True,
+    )
+    collate_report.inputs.output_dir = str(output_dir)
+    collate_report.inputs.subject_id = f'sub-{subject_id}'
+    collate_report.inputs.version = __version__
+    collate_report.inputs.workflow_desc = workflow.__desc__ or ''
+
+    workflow.connect([
+        (ds_report_summary, report_sentinel_merge, [('out_file', 'in1')]),
+        (ds_report_about, report_sentinel_merge, [('out_file', 'in2')]),
+        (anat_preproc_wf, report_sentinel_merge, [
+            ('outputnode.anat2std_xfm', 'in3'),
+        ]),
+    ])
+
+    if run_segmentation:
+        workflow.connect([
+            (ds_tumor_dseg_report, report_sentinel_merge, [('out_file', 'in4')]),
+        ])
+
+    workflow.connect([
+        (report_sentinel_merge, collate_report, [('out', 'report_files')]),
+    ])
 
     return workflow
 

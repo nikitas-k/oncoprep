@@ -123,7 +123,6 @@ def init_anat_reports_wf(*, spaces, freesurfer, output_dir, sloppy=False, name='
         name='ds_t1w_dseg_mask_report',
         run_without_submitting=True,
     )
-    # implement additional reports
 
     # fmt:off
     workflow.connect([
@@ -141,8 +140,8 @@ def init_anat_reports_wf(*, spaces, freesurfer, output_dir, sloppy=False, name='
     if not isinstance(spaces, SpatialReferences):
         spaces = SpatialReferences(spaces)
 
-    if spaces._cached is not None and spaces.cached.references:
-        multimodal_template_iterator_wf = init_multimodal_template_iterator_wf(spaces=spaces, sloppy=sloppy)
+    if spaces is not None and spaces.references:
+        multimodal_template_iterator_wf = init_template_iterator_wf(spaces=spaces, sloppy=sloppy)
         t1w_std = pe.Node(
             ApplyTransforms(
                 dimension=3,
@@ -192,7 +191,7 @@ def init_anat_reports_wf(*, spaces, freesurfer, output_dir, sloppy=False, name='
             name='flair_std',
         )
 
-        # Generate reportlets showing spatial normalization
+        # --- T1w spatial-normalization reportlet ---
         norm_msk = pe.Node(
             niu.Function(
                 function=_rpt_masks,
@@ -202,26 +201,67 @@ def init_anat_reports_wf(*, spaces, freesurfer, output_dir, sloppy=False, name='
             name='norm_msk',
         )
         norm_rpt = pe.Node(SimpleBeforeAfter(), name='norm_rpt', mem_gb=0.1)
-        norm_rpt.inputs.after_label = 'Participant'  # after
+        norm_rpt.inputs.after_label = 'Participant'
 
         ds_std_t1w_report = pe.Node(
             DerivativesDataSink(base_directory=output_dir, suffix='T1w', datatype='figures'),
             name='ds_std_t1w_report',
             run_without_submitting=True,
         )
-        
-        # for extra modalities
+
+        # --- T1ce spatial-normalization reportlet ---
+        norm_msk_t1ce = pe.Node(
+            niu.Function(
+                function=_rpt_masks,
+                output_names=['before', 'after'],
+                input_names=['mask_file', 'before', 'after', 'after_mask'],
+            ),
+            name='norm_msk_t1ce',
+        )
+        norm_rpt_t1ce = pe.Node(SimpleBeforeAfter(), name='norm_rpt_t1ce', mem_gb=0.1)
+        norm_rpt_t1ce.inputs.after_label = 'Participant'
+
         ds_std_t1ce_report = pe.Node(
-            DerivativesDataSink(base_directory=output_dir, suffix='T1ce', datatype='figures'),
+            DerivativesDataSink(
+                base_directory=output_dir, 
+                suffix='T1w', 
+                allowed_entities=('acq',), 
+                datatype='figures'
+            ),
             name='ds_std_t1ce_report',
             run_without_submitting=True,
         )
+        ds_std_t1ce_report.inputs.acq = 'ce'  # acq-ce distinguishes from pre-contrast T1w
+
+        # --- T2w spatial-normalization reportlet ---
+        norm_msk_t2w = pe.Node(
+            niu.Function(
+                function=_rpt_masks,
+                output_names=['before', 'after'],
+                input_names=['mask_file', 'before', 'after', 'after_mask'],
+            ),
+            name='norm_msk_t2w',
+        )
+        norm_rpt_t2w = pe.Node(SimpleBeforeAfter(), name='norm_rpt_t2w', mem_gb=0.1)
+        norm_rpt_t2w.inputs.after_label = 'Participant'
 
         ds_std_t2w_report = pe.Node(
             DerivativesDataSink(base_directory=output_dir, suffix='T2w', datatype='figures'),
             name='ds_std_t2w_report',
             run_without_submitting=True,
         )
+
+        # --- FLAIR spatial-normalization reportlet ---
+        norm_msk_flair = pe.Node(
+            niu.Function(
+                function=_rpt_masks,
+                output_names=['before', 'after'],
+                input_names=['mask_file', 'before', 'after', 'after_mask'],
+            ),
+            name='norm_msk_flair',
+        )
+        norm_rpt_flair = pe.Node(SimpleBeforeAfter(), name='norm_rpt_flair', mem_gb=0.1)
+        norm_rpt_flair.inputs.after_label = 'Participant'
 
         ds_std_flair_report = pe.Node(
             DerivativesDataSink(base_directory=output_dir, suffix='FLAIR', datatype='figures'),
@@ -231,10 +271,12 @@ def init_anat_reports_wf(*, spaces, freesurfer, output_dir, sloppy=False, name='
 
         # fmt:off
         workflow.connect([
+            # --- shared template / transform plumbing ---
             (inputnode, multimodal_template_iterator_wf, [
                 ('template', 'inputnode.template'),
                 ('anat2std_xfm', 'inputnode.anat2std_xfm'),
             ]),
+            # warp each modality + mask into standard space
             (inputnode, t1w_std, [('t1w_preproc', 'input_image')]),
             (inputnode, mask_std, [('t1w_mask', 'input_image')]),
             (inputnode, t1ce_std, [('t1ce_preproc', 'input_image')]),
@@ -258,8 +300,10 @@ def init_anat_reports_wf(*, spaces, freesurfer, output_dir, sloppy=False, name='
             ]),
             (multimodal_template_iterator_wf, flair_std, [
                 ('outputnode.anat2std_xfm', 'transforms'),
-                ('outputnode.std_t', 'reference_image'),
+                ('outputnode.std_t1w', 'reference_image'),
             ]),
+
+            # --- T1w report ---
             (multimodal_template_iterator_wf, norm_rpt, [('outputnode.space', 'before_label')]),
             (t1w_std, norm_msk, [('output_image', 'after')]),
             (mask_std, norm_msk, [('output_image', 'after_mask')]),
@@ -267,41 +311,49 @@ def init_anat_reports_wf(*, spaces, freesurfer, output_dir, sloppy=False, name='
                 ('outputnode.std_t1w', 'before'),
                 ('outputnode.std_mask', 'mask_file'),
             ]),
-            (norm_msk, norm_rpt, [
-                ('before', 'before'),
-                ('after', 'after'),
-            ]),
+            (norm_msk, norm_rpt, [('before', 'before'), ('after', 'after')]),
             (inputnode, ds_std_t1w_report, [('source_file', 'source_file')]),
             (multimodal_template_iterator_wf, ds_std_t1w_report, [('outputnode.space', 'space')]),
             (norm_rpt, ds_std_t1w_report, [('out_report', 'in_file')]),
+
+            # --- T1ce report (uses t1ce_std as "after") ---
+            (multimodal_template_iterator_wf, norm_rpt_t1ce, [('outputnode.space', 'before_label')]),
+            (t1ce_std, norm_msk_t1ce, [('output_image', 'after')]),
+            (mask_std, norm_msk_t1ce, [('output_image', 'after_mask')]),
+            (multimodal_template_iterator_wf, norm_msk_t1ce, [
+                ('outputnode.std_t1w', 'before'),
+                ('outputnode.std_mask', 'mask_file'),
+            ]),
+            (norm_msk_t1ce, norm_rpt_t1ce, [('before', 'before'), ('after', 'after')]),
+            (inputnode, ds_std_t1ce_report, [('source_file', 'source_file')]),
             (multimodal_template_iterator_wf, ds_std_t1ce_report, [('outputnode.space', 'space')]),
-            (norm_rpt, ds_std_t1ce_report, [('out_report', 'in_file')]),
+            (norm_rpt_t1ce, ds_std_t1ce_report, [('out_report', 'in_file')]),
+
+            # --- T2w report (uses t2w_std as "after") ---
+            (multimodal_template_iterator_wf, norm_rpt_t2w, [('outputnode.space', 'before_label')]),
+            (t2w_std, norm_msk_t2w, [('output_image', 'after')]),
+            (mask_std, norm_msk_t2w, [('output_image', 'after_mask')]),
+            (multimodal_template_iterator_wf, norm_msk_t2w, [
+                ('outputnode.std_t1w', 'before'),
+                ('outputnode.std_mask', 'mask_file'),
+            ]),
+            (norm_msk_t2w, norm_rpt_t2w, [('before', 'before'), ('after', 'after')]),
             (inputnode, ds_std_t2w_report, [('source_file', 'source_file')]),
             (multimodal_template_iterator_wf, ds_std_t2w_report, [('outputnode.space', 'space')]),
-            (norm_rpt, ds_std_t2w_report, [('out_report', 'in_file')]),
+            (norm_rpt_t2w, ds_std_t2w_report, [('out_report', 'in_file')]),
+
+            # --- FLAIR report (uses flair_std as "after") ---
+            (multimodal_template_iterator_wf, norm_rpt_flair, [('outputnode.space', 'before_label')]),
+            (flair_std, norm_msk_flair, [('output_image', 'after')]),
+            (mask_std, norm_msk_flair, [('output_image', 'after_mask')]),
+            (multimodal_template_iterator_wf, norm_msk_flair, [
+                ('outputnode.std_t1w', 'before'),
+                ('outputnode.std_mask', 'mask_file'),
+            ]),
+            (norm_msk_flair, norm_rpt_flair, [('before', 'before'), ('after', 'after')]),
             (inputnode, ds_std_flair_report, [('source_file', 'source_file')]),
             (multimodal_template_iterator_wf, ds_std_flair_report, [('outputnode.space', 'space')]),
-            (norm_rpt, ds_std_flair_report, [('out_report', 'in_file')]),
-        ])
-        # fmt:on
-
-    if freesurfer:
-        from ..interfaces.reports import FSSurfaceReport
-
-        recon_report = pe.Node(FSSurfaceReport(), name='recon_report')
-        recon_report.interface._always_run = True
-
-        ds_recon_report = pe.Node(
-            DerivativesDataSink(base_directory=output_dir, desc='reconall', datatype='figures'),
-            name='ds_recon_report',
-            run_without_submitting=True,
-        )
-        # fmt:off
-        workflow.connect([
-            (inputnode, recon_report, [('subjects_dir', 'subjects_dir'),
-                                       ('subject_id', 'subject_id')]),
-            (recon_report, ds_recon_report, [('out_report', 'in_file')]),
-            (inputnode, ds_recon_report, [('source_file', 'source_file')])
+            (norm_rpt_flair, ds_std_flair_report, [('out_report', 'in_file')]),
         ])
         # fmt:on
 
