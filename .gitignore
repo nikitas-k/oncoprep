@@ -16,6 +16,10 @@
 *.instructions
 *.pytest_cache/
 *.venv
+*.build
+*.egg-info/
+*work/
+*.DS_Store
 
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
@@ -453,3 +457,8 @@ UNUSED_FUNCTIONS_ANALYSIS.md
 VALIDATION_REPORT.md
 .gitignore
 VENV_SETUP.md
+src/oncoprep/.DS_Store
+.dockerignore
+.gitignore
+pytest.ini
+.github/copilot-instructions.md
