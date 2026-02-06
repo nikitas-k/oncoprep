@@ -60,6 +60,10 @@ def init_qa_metrics_wf(
         name='outputnode',
     )
 
+    # Set default values for optional inputs
+    inputnode.inputs.anat_dseg = None
+    inputnode.inputs.anat2std_xfm = None
+
     compute_qa = pe.Node(
         niu.Function(
             function=_compute_qa_metrics,

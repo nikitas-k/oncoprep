@@ -35,10 +35,13 @@ from nipype.interfaces.base import (
     Str,
     TraitedSpec,
     isdefined,
+    traits,
 )
 from nipype.interfaces.io import FSSourceInputSpec as _FSSourceInputSpec
 from nipype.interfaces.mixins import reporting
 from niworkflows.interfaces.reportlets.base import _SVGReportCapableInputSpec
+
+from niworkflows.interfaces.reportlets.masks import ROIsPlot as _ROIsPlot
 
 SUBJECT_TEMPLATE = """\
 \t<ul class="elem-desc">
@@ -253,5 +256,59 @@ class FSSurfaceReport(SimpleInterface):
         )
         return runtime
 
+class _TumorROIsPlotInputSpec(_SVGReportCapableInputSpec):
+    in_file = File(exists=True, mandatory=True, desc='background volume (e.g. T1w)')
+    in_rois = InputMultiObject(
+        File(exists=True), mandatory=True, desc='tumor segmentation file(s)'
+    )
+    in_mask = File(exists=True, desc='brain mask')
+    masked = traits.Bool(False, usedefault=True, desc='mask in_file prior to plotting')
+    colors = traits.Either(
+        None, traits.List(Str), usedefault=True, desc='contour colors per level'
+    )
+    levels = traits.Either(
+        None, traits.List(traits.Float), usedefault=True, desc='contour levels'
+    )
+    mask_color = Str('r', usedefault=True, desc='color for brain mask contour')
+    legend_labels = traits.List(
+        traits.Tuple(Str, Str),
+        desc='list of (color, label) tuples for the SVG legend',
+    )
 
-__all__ = ['SummaryInterface', 'SubjectSummary', 'AboutSummary', 'FSSurfaceReport']
+
+class TumorROIsPlot(_ROIsPlot):
+    """ROIsPlot with an appended color legend for tumor segmentation regions."""
+
+    input_spec = _TumorROIsPlotInputSpec
+
+    def _generate_report(self):
+        super()._generate_report()
+
+        if not isdefined(self.inputs.legend_labels) or not self.inputs.legend_labels:
+            return
+
+        legend_items = list(self.inputs.legend_labels)
+        svg_text = Path(self._out_report).read_text()
+
+        box_h = 28 + 22 * len(legend_items)
+        legend_svg = (
+            '<g transform="translate(10, 10)">'
+            f'<rect x="0" y="0" width="260" height="{box_h}" rx="6" ry="6" '
+            'fill="white" fill-opacity="0.85" stroke="#ccc" stroke-width="0.5"/>'
+            '<text x="10" y="20" font-family="Arial, sans-serif" font-size="11" '
+            'font-weight="bold" fill="#333">Tumor Segmentation</text>'
+        )
+        for i, (color, label) in enumerate(legend_items):
+            y = 38 + i * 22
+            legend_svg += (
+                f'<rect x="14" y="{y - 9}" width="14" height="14" rx="2" ry="2" '
+                f'fill="none" stroke="{color}" stroke-width="2.5"/>'
+                f'<text x="36" y="{y + 3}" font-family="Arial, sans-serif" '
+                f'font-size="11" fill="#333">{label}</text>'
+            )
+        legend_svg += '</g>'
+
+        svg_text = svg_text.replace('</svg>', legend_svg + '\n</svg>')
+        Path(self._out_report).write_text(svg_text)
+
+__all__ = ['SummaryInterface', 'SubjectSummary', 'AboutSummary', 'FSSurfaceReport', 'TumorROIsPlot']
