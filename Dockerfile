@@ -115,7 +115,8 @@ RUN ( mkdir -p /opt/workbench && \
 WORKDIR /app
 
 # Install Python dependencies first (layer cache optimisation)
-COPY pyproject.toml setup.py README.md LICENSE ./
+COPY pyproject.toml README.md LICENSE ./
+COPY setup.py* ./
 COPY src/ ./src/
 
 # Install OncoPrep and all core dependencies
