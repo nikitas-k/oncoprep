@@ -38,11 +38,6 @@ Generate a report stub:
 oncoprep /path/to/bids /path/to/derivatives participant --participant-label sub-001 --reports-only
 ```
 
-<<<<<<< HEAD
-<<<<<<< Updated upstream
-=======
-=======
->>>>>>> refs/remotes/origin/main
 ## Segmentation
 
 Run preprocessing pipeline and segmentation (with ensemble consensus voting)
@@ -58,7 +53,6 @@ oncoprep /path/to/bids /path/to/derivatives participant --participant-label sub-
 oncoprep /path/to/bids /path/to/derivatives participant --participant-label sub-001 --run-segmentation --seg-model-path /path/to/model
 ```
 
-<<<<<<< HEAD
 ## Docker
 
 OncoPrep is available as a Docker image with all neuroimaging dependencies (ANTs, FSL, dcm2niix) pre-installed.
@@ -127,9 +121,6 @@ docker build --platform linux/amd64 -t oncoprep:latest .
 
 > **Note:** The image targets `linux/amd64`. On Apple Silicon Macs, Docker Desktop will use Rosetta emulation automatically, but ANTs binaries may hit `Illegal instruction` errors due to AVX instruction limitations. Use the native pip install for local development on ARM Macs.
 
->>>>>>> Stashed changes
-=======
->>>>>>> refs/remotes/origin/main
 ## Development
 
 ```bash
