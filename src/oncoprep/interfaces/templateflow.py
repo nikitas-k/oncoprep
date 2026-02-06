@@ -68,6 +68,8 @@ class _TemplateFlowSelectOutputSpec(TraitedSpec):
     t1w_file = File(exists=True, desc='T1w template')
     brain_mask = File(exists=True, desc="Template's brain mask")
     t2w_file = File(desc='T2w template')
+    t1ce_file = File(desc='T1ce template (if available)')
+    flair_file = File(desc='FLAIR template (if available)')
 
 
 class TemplateFlowSelect(SimpleInterface):

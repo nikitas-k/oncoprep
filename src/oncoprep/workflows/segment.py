@@ -12,40 +12,82 @@ from nipype.pipeline import engine as pe
 from niworkflows.engine.workflows import LiterateWorkflow
 
 from oncoprep.utils.logging import get_logger
+from oncoprep.utils.segment import (
+    check_gpu_available,
+    check_docker_image,
+    pull_docker_image,
+    ensure_docker_images,
+    BRATS_OLD_LABELS,
+    BRATS_NEW_LABELS,
+)
 
 LOGGER = get_logger(__name__)
 iflogger = nipype_logging.getLogger('nipype.interface')
 
 
+# Nipype Function Node helpers
+# These must remain in this file for Nipype's function serialization to work
+
 def _prepare_segmentation_inputs(
-    t1: str,
-    t1ce: str,
-    t2: str,
-    flair: str,
-    output_dir: str,
-    temp_dir: str,
-    fileformats_config: Dict[str, Dict[str, str]],
-) -> Dict[str, str]:
-    """Prepare and save segmentation inputs to temporary directory.
+    t1,
+    t1ce,
+    t2,
+    flair,
+    brain_mask,
+    fileformats_config,
+):
+    """Prepare and save segmentation inputs to working directory.
+
+    Creates a working directory in the current node's execution space and
+    saves input images with standardized filenames for Docker container.
+    Also creates symlinks for alternative naming conventions to support
+    multiple models with different expected filenames.
+
+    IMPORTANT: All images are skull-stripped using the brain mask to ensure
+    background voxels are zero. BraTS containers (e.g., lfb_rwth) require
+    this for proper processing.
 
     Parameters
     ----------
     t1, t1ce, t2, flair : str
         Paths to input MRI images
-    output_dir : str
-        Output directory for results
-    temp_dir : str
-        Temporary directory for Docker inputs
+    brain_mask : str
+        Path to brain mask (binary mask where 1=brain, 0=background)
     fileformats_config : dict
-        File format mapping configuration
+        File format mapping from fileformats.json for the specific model's format.
+        Expected keys: 't1', 't1c', 't2', 'fla' with output filename values.
 
     Returns
     -------
-    dict
-        Mapping of prepared file paths
+    work_dir : str
+        Path to working directory containing prepared files
     """
+    import os
+    import numpy as np
     import nibabel as nb
-    from nipype.utils.filemanip import fname_presuffix
+    import logging
+
+    LOGGER = logging.getLogger('nipype.workflow')
+
+    # Create working directory in current execution space
+    work_dir = os.path.abspath('seg_inputs')
+    os.makedirs(work_dir, exist_ok=True)
+
+    # Load brain mask for skull-stripping
+    mask_img = nb.load(brain_mask)
+    mask_data = mask_img.get_fdata() > 0  # Binarize mask
+
+    LOGGER.info(f"Loaded brain mask: {brain_mask}")
+    LOGGER.info(f"Mask covers {100 * np.sum(mask_data) / mask_data.size:.1f}% of volume")
+
+    # Map internal keys to fileformats.json keys
+    # Internal: t1, t1ce, t2, flair -> Fileformat: t1, t1c, t2, fla
+    key_mapping = {
+        't1': 't1',
+        't1ce': 't1c',
+        't2': 't2',
+        'flair': 'fla',
+    }
 
     inputs = {
         't1': t1,
@@ -54,29 +96,72 @@ def _prepare_segmentation_inputs(
         'flair': flair,
     }
 
-    prepared = {}
+    # Track saved files for creating symlinks
+    saved_files = {}
+
     for key, img_path in inputs.items():
         if img_path:
-            # Load and save to temp directory with standard names
+            # Load image
             img = nb.load(img_path)
-            # Use format config if available
-            out_name = fileformats_config.get(key, f'{key}.nii.gz')
-            out_path = os.path.join(temp_dir, out_name)
-            nb.save(img, out_path)
-            prepared[key] = out_path
+            data = img.get_fdata()
 
-    return prepared
+            # Apply brain mask to ensure zero background
+            # This is required by BraTS containers which assert background == 0
+            masked_data = data * mask_data
+            masked_img = nb.Nifti1Image(masked_data.astype(np.float32), img.affine, img.header)
+
+            # Map key to fileformat key and get output filename
+            fmt_key = key_mapping.get(key, key)
+            out_name = fileformats_config.get(fmt_key, f'{key}.nii.gz')
+            out_path = os.path.join(work_dir, out_name)
+            nb.save(masked_img, out_path)
+            saved_files[key] = out_name
+            LOGGER.info(f"Prepared {key} -> {out_path} (skull-stripped)")
+
+    # Create hard links or copies for alternative naming conventions
+    # This allows multiple models with different expected filenames to work
+    # from the same working directory.
+    # Note: Using hard links (or copies) instead of symlinks because Docker
+    # on macOS may not handle symlinks correctly when mounting volumes.
+    import shutil
+    alternative_names = {
+        't1ce': ['t1c.nii.gz', 't1ce.nii.gz'],  # Some models expect t1c, others t1ce
+        'flair': ['flair.nii.gz', 'fla.nii.gz'],  # Some models expect flair, others fla
+    }
+
+    for key, alt_names in alternative_names.items():
+        if key in saved_files:
+            primary_name = saved_files[key]
+            primary_path = os.path.join(work_dir, primary_name)
+            for alt_name in alt_names:
+                if alt_name != primary_name:
+                    alt_path = os.path.join(work_dir, alt_name)
+                    # Remove existing file/symlink if present
+                    if os.path.islink(alt_path) or os.path.exists(alt_path):
+                        os.unlink(alt_path)
+                    # Try hard link first, fall back to copy
+                    try:
+                        os.link(primary_path, alt_path)
+                        LOGGER.info(f"Created hard link {alt_name} -> {primary_name}")
+                    except (OSError, NotImplementedError):
+                        # Hard links not supported, use copy
+                        shutil.copy2(primary_path, alt_path)
+                        LOGGER.info(f"Created copy {alt_name} from {primary_name}")
+
+    LOGGER.info(f"Prepared input files in {work_dir}")
+    return work_dir
 
 
 def _run_segmentation_container(
-    temp_dir: str,
-    output_dir: str,
-    container_id: str,
-    config: Dict,
-    gpu_id: str = "0",
-    use_new_docker: bool = True,
-    verbose: bool = True,
-) -> bool:
+    temp_dir,
+    output_dir,
+    container_id,
+    config,
+    gpu_id="0",
+    use_new_docker=True,
+    verbose=True,
+    _inputs_ready=None,
+):
     """Execute Docker container for segmentation.
 
     Parameters
@@ -98,16 +183,32 @@ def _run_segmentation_container(
 
     Returns
     -------
-    bool
+    success : bool
         True if successful, False otherwise
+    results_dir : str
+        Path to results directory in the current node's working directory.
+        This directory persists even when upstream nodes are cache-invalidated.
     """
     import os
+    import platform
+    import subprocess
+    import logging
+    LOGGER = logging.getLogger('nipype.workflow')
 
     os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
     os.environ["CUDA_VISIBLE_DEVICES"] = gpu_id
 
     # Build Docker command
     command = "docker run --rm"
+
+    # Check if running on ARM64 (Apple Silicon) - add platform flag for x86 emulation
+    machine = platform.machine().lower()
+    if machine in ('arm64', 'aarch64'):
+        command += " --platform linux/amd64"
+        LOGGER.warning(
+            "Running x86_64 container on ARM64 via QEMU emulation. "
+            "This may be slow. For faster processing, use an x86_64 machine."
+        )
 
     # User mode flags
     if config.get("user_mode", False):
@@ -137,14 +238,35 @@ def _run_segmentation_container(
     try:
         subprocess.run(command, shell=True, check=True, capture_output=True)
         LOGGER.info(f"Container {container_id} completed successfully")
-        return True
+        success = True
     except subprocess.CalledProcessError as e:
         LOGGER.error(f"Container {container_id} failed: {e.stderr.decode()}")
-        return False
+        success = False
+
+    # Copy results to node's own cwd so they survive prepare_inputs cache
+    # invalidation.  When Nipype re-runs prepare_inputs (fresh directory)
+    # but skips the Docker container (cached), the results directory inside
+    # prepare_inputs is empty.  Keeping a copy here ensures extract_result
+    # can still find them.
+    import shutil as _shutil
+    results_src = os.path.join(temp_dir, 'results')
+    results_dst = os.path.abspath('results')
+    if os.path.isdir(results_src) and os.path.abspath(results_src) != results_dst:
+        if os.path.exists(results_dst):
+            _shutil.rmtree(results_dst)
+        _shutil.copytree(results_src, results_dst)
+        LOGGER.info(f"Copied results to node cwd: {results_dst}")
+
+    return success, results_dst
 
 
-def _find_segmentation_result(results_dir: str, container_id: str) -> Optional[str]:
+def _find_segmentation_result(results_dir, container_id, _wait=None):
     """Find segmentation output file in results directory.
+
+    Copies the result to the current node's working directory so that
+    the output path survives Nipype cache invalidation of upstream nodes
+    (e.g. prepare_inputs being re-run without the Docker container
+    re-running).
 
     Parameters
     ----------
@@ -152,25 +274,51 @@ def _find_segmentation_result(results_dir: str, container_id: str) -> Optional[s
         Directory containing results
     container_id : str
         Container identifier for matching
+    _wait : any
+        Dummy parameter to enforce dependency ordering
 
     Returns
     -------
     str or None
-        Path to segmentation file, or None if not found
+        Path to segmentation file (in node's own cwd), or None if not found
     """
+    import os
     import glob
+    import shutil
+    import logging
+    LOGGER = logging.getLogger('nipype.workflow')
+
+    # Some containers (e.g. econib) write to a 'results' subdirectory
+    results_subdir = os.path.join(results_dir, 'results')
+    search_dirs = [results_dir]
+    if os.path.isdir(results_subdir):
+        search_dirs.insert(0, results_subdir)  # Search subdirectory first
 
     # Search patterns in priority order
-    patterns = [
-        os.path.join(results_dir, f"tumor_{container_id}_class.nii*"),
-        os.path.join(results_dir, "tumor_*_class.nii*"),
-        os.path.join(results_dir, f"{container_id}*.nii*"),
-        os.path.join(results_dir, "*tumor*.nii*"),
-    ]
+    patterns = []
+    for search_dir in search_dirs:
+        patterns.extend([
+            os.path.join(search_dir, f"tumor_{container_id}_class.nii*"),
+            os.path.join(search_dir, "tumor_*_class.nii*"),
+            os.path.join(search_dir, f"{container_id}*.nii*"),
+            os.path.join(search_dir, "*tumor*.nii*"),
+            # Match econib output pattern: tumor_fpeconib.nii.gz
+            os.path.join(search_dir, "tumor_*.nii.gz"),
+        ])
 
     for pattern in patterns:
         matches = glob.glob(pattern)
         if matches:
+            # Filter out per-class segmentation files (e.g., tumor_*_1.nii.gz, tumor_*_2.nii.gz)
+            # These are individual label files, not the combined segmentation
+            import re
+            combined_matches = [
+                m for m in matches
+                if not re.search(r'_[0-4]\.(nii|nii\.gz)$', m)
+            ]
+            # If we have combined files, use those; otherwise fall back to all matches
+            matches = combined_matches if combined_matches else matches
+            
             if len(matches) > 1:
                 # Return file with most unique labels
                 import nibabel as nb
@@ -188,18 +336,29 @@ def _find_segmentation_result(results_dir: str, container_id: str) -> Optional[s
                     f"Multiple segmentations found for {container_id}, "
                     f"selecting file with {max_labels} labels: {best_file}"
                 )
-                return best_file
-            return matches[0]
+                found = best_file
+            else:
+                found = matches[0]
+
+            # Copy result into the current node's working directory so the
+            # output path is independent of upstream nodes' directories.
+            # This prevents "file not found" errors when Nipype invalidates
+            # the prepare_inputs cache but skips the Docker container re-run.
+            out_path = os.path.abspath(os.path.basename(found))
+            if os.path.abspath(found) != out_path:
+                shutil.copy2(found, out_path)
+                LOGGER.info(f"Copied segmentation result to node cwd: {out_path}")
+            return out_path
 
     LOGGER.error(f"No segmentation output found in {results_dir}")
     return None
 
 
 def _fuse_segmentations(
-    segmentation_files: List[str],
-    output_path: str,
-    method: str = "majority",
-) -> str:
+    segmentation_files,
+    output_path,
+    method="majority",
+):
     """Fuse multiple segmentation results.
 
     Parameters
@@ -249,91 +408,345 @@ def _fuse_segmentations(
     return output_path
 
 
-def build_segmentation_workflow(
-    bids_dir: Path,
+# BraTS Label Definitions
+# -----------------------
+# See oncoprep.utils.segment for BRATS_OLD_LABELS and BRATS_NEW_LABELS dicts
+#
+# Old BraTS 2017-2020 labels (from raw model output):
+#   1: Necrotic (NE) - necrotic tumor core
+#   2: Edema (OE) - peritumoral edema
+#   3: Enhancing (ET) - enhancing tumor (original label 4 mapped to 3)
+#   4: Resection cavity (RC) - optional, post-operative
+#
+# New BraTS 2021+ derived labels:
+#   1: Enhancing Tumor (ET) - label 4 from old
+#   2: Tumor Core (TC) - labels 1 + 4 from old (NE + ET)
+#   3: Whole Tumor (WT) - labels 1 + 2 + 4 from old (NE + OE + ET)
+#   4: Non-Enhancing Tumor Core (NETC) - label 1 from old (NE only)
+#   5: Surrounding Non-enhancing FLAIR Hyperintensity (SNFH) - label 2 from old (OE only)
+#   6: Resection Cavity (RC) - optional, post-operative
+
+
+def _convert_to_old_labels(seg_file):
+    """Convert raw BraTS model output to old label scheme.
+    
+    Raw BraTS model outputs use label 4 for enhancing tumor.
+    Old scheme remaps: 4 -> 3 for enhancing tumor.
+    
+    Parameters
+    ----------
+    seg_file : str or None
+        Path to raw segmentation file, or None if segmentation failed
+        
+    Returns
+    -------
+    str or None
+        Path to converted segmentation with old labels, or None if input is None
+    """
+    import os
+    import nibabel as nib
+    import numpy as np
+    from pathlib import Path
+    import logging
+    
+    if seg_file is None:
+        logging.getLogger('nipype.workflow').warning(
+            "Segmentation file is None, skipping old label conversion"
+        )
+        return None
+    
+    if not os.path.isfile(seg_file):
+        logging.getLogger('nipype.workflow').warning(
+            f"Segmentation file does not exist: {seg_file}, skipping old label conversion"
+        )
+        return None
+    
+    img = nib.load(seg_file)
+    data = np.asarray(img.dataobj)
+    
+    # Create old label mapping
+    # Raw: 1=NCR, 2=ED, 4=ET -> Old: 1=NCR, 2=ED, 3=ET
+    old_labels = np.zeros_like(data, dtype=np.uint8)
+    old_labels[data == 1] = 1  # NCR stays 1
+    old_labels[data == 2] = 2  # ED stays 2
+    old_labels[data == 4] = 3  # ET becomes 3
+    # Resection cavity (if present as label 5 in raw) -> 4
+    old_labels[data == 5] = 4
+    
+    # Save to node's working directory (not derivatives)
+    out_dir = os.path.abspath('tumor_labels')
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = str(Path(out_dir) / "tumor_seg_old_labels.nii.gz")
+    
+    out_img = nib.Nifti1Image(old_labels, img.affine, img.header)
+    nib.save(out_img, out_path)
+    
+    return out_path
+
+
+def _convert_to_new_labels(seg_file):
+    """Convert raw BraTS model output to new derived label scheme.
+    
+    Creates composite labels from raw BraTS segmentation:
+    - ET (1): Enhancing tumor only
+    - TC (2): Tumor core = NCR + ET
+    - WT (3): Whole tumor = NCR + ED + ET
+    - NETC (4): Non-enhancing tumor core = NCR only
+    - SNFH (5): FLAIR hyperintensity = ED only
+    - RC (6): Resection cavity (optional)
+    
+    Parameters
+    ----------
+    seg_file : str or None
+        Path to raw segmentation file, or None if segmentation failed
+        
+    Returns
+    -------
+    str or None
+        Path to converted segmentation with new labels, or None if input is None
+    """
+    import os
+    import nibabel as nib
+    import numpy as np
+    from pathlib import Path
+    import logging
+    
+    if seg_file is None:
+        logging.getLogger('nipype.workflow').warning(
+            "Segmentation file is None, skipping new label conversion"
+        )
+        return None
+    
+    if not os.path.isfile(seg_file):
+        logging.getLogger('nipype.workflow').warning(
+            f"Segmentation file does not exist: {seg_file}, skipping new label conversion"
+        )
+        return None
+    
+    img = nib.load(seg_file)
+    data = np.asarray(img.dataobj)
+    
+    # Extract raw labels
+    # Raw BraTS: 1=NCR, 2=ED, 4=ET, 5=RC (optional)
+    ncr_mask = (data == 1)
+    ed_mask = (data == 2)
+    et_mask = (data == 4)
+    rc_mask = (data == 5)
+    
+    # Create new derived labels
+    new_labels = np.zeros_like(data, dtype=np.uint8)
+    
+    # Priority order (lower labels overwritten by higher priority):
+    # WT (3) = NCR + ED + ET - lowest priority for visualization
+    new_labels[ncr_mask | ed_mask | et_mask] = 3
+    
+    # TC (2) = NCR + ET
+    new_labels[ncr_mask | et_mask] = 2
+    
+    # SNFH (5) = ED only (peritumoral edema / FLAIR hyperintensity)
+    new_labels[ed_mask & ~ncr_mask & ~et_mask] = 5
+    
+    # NETC (4) = NCR only (non-enhancing tumor core)
+    new_labels[ncr_mask & ~et_mask] = 4
+    
+    # ET (1) = Enhancing tumor only - highest tumor priority
+    new_labels[et_mask] = 1
+    
+    # RC (6) = Resection cavity (optional, post-op)
+    new_labels[rc_mask] = 6
+    
+    # Save to node's working directory (not derivatives)
+    out_dir = os.path.abspath('tumor_labels')
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = str(Path(out_dir) / "tumor_seg_new_labels.nii.gz")
+    
+    out_img = nib.Nifti1Image(new_labels, img.affine, img.header)
+    nib.save(out_img, out_path)
+    
+    return out_path
+
+
+def init_anat_seg_wf(
+    *,
     output_dir: Path,
-    participant_label: Optional[List[str]] = None,
-    session_label: Optional[List[str]] = None,
-    nprocs: int = 1,
-    omp_nthreads: int = 1,
-    mem_gb: Optional[float] = None,
     use_gpu: bool = False,
     default_model: bool = True,
     model_path: Optional[Path] = None,
     sloppy: bool = False,
-    name: str = "brats_segment",
+    name: str = 'anat_seg_wf',
 ) -> Workflow:
-    """Build a BraTS-style segmentation workflow with nipreps compatibility.
+    """
+    Create tumor segmentation workflow for integration with anatomical preprocessing.
 
-    Performs tumor segmentation on preprocessed multi-modal MRI data using either
-    the default model or a custom model via Docker containers.
+    This workflow receives preprocessed multi-modal MRI images from the anatomical
+    preprocessing workflow and performs BraTS-style tumor segmentation using
+    containerized deep learning models.
 
-    This workflow follows nipreps conventions and can integrate with other
-    OncoPrep preprocessing workflows. It supports:
-    - Single or multi-modal MRI inputs (T1, T1ce, T2, FLAIR)
-    - GPU-accelerated execution when available
-    - Multiple segmentation models with fusion
-    - Proper BIDS derivatives output
+    Workflow Graph
+        .. workflow::
+            :graph2use: orig
+            :simple_form: yes
+
+            from oncoprep.workflows.segment import init_anat_seg_wf
+            wf = init_anat_seg_wf(output_dir='/tmp')
 
     Parameters
     ----------
-    bids_dir : Path
-        Root directory of BIDS dataset
     output_dir : Path
-        Output directory for results
-    participant_label : list[str] | None
-        List of participant IDs to process. If None, processes all.
-    session_label : list[str] | None
-        List of session IDs to process. If None, processes all.
-    nprocs : int
-        Number of parallel processes (default: 1)
-    omp_nthreads : int
-        Number of OpenMP threads per process (default: 1)
-    mem_gb : float | None
-        Memory limit in GB. If None, uses system default.
+        Output directory for derivatives
     use_gpu : bool
-        Enable GPU acceleration if available (default: False)
+        Enable GPU acceleration for Docker containers (default: False)
     default_model : bool
         Use default segmentation model (default: True)
     model_path : Path | None
-        Path to custom segmentation model. Overrides default_model if provided.
+        Path to custom segmentation model
     sloppy : bool
-        Use faster settings for quick testing (default: False)
+        Use faster settings for testing (default: False)
     name : str
-        Workflow name (default: 'brats_segment')
+        Workflow name (default: anat_seg_wf)
+
+    Inputs
+    ------
+    source_file
+        Source file for BIDS derivatives (typically T1w)
+    t1w_preproc
+        Preprocessed T1w image
+    t1ce_preproc
+        Preprocessed T1ce image
+    t2w_preproc
+        Preprocessed T2w image
+    flair_preproc
+        Preprocessed FLAIR image
+    brain_mask
+        Brain mask (optional, for reference)
+
+    Outputs
+    -------
+    tumor_seg
+        Tumor segmentation in native anatomical space
 
     Returns
     -------
     Workflow
-        Nipype workflow object with segmentation pipeline
-
-    Notes
-    -----
-    The workflow expects Docker to be installed and available. It will:
-    1. Collect multi-modal MRI inputs for each subject
-    2. Prepare inputs for Docker containers
-    3. Execute segmentation containers (supporting multiple models)
-    4. Fuse results if multiple models are used
-    5. Save outputs in BIDS derivatives format
-
-    Requires:
-    - Docker with GPU support (nvidia-docker or --gpus flag)
-    - Segmentation model containers properly configured
-    - Configuration files in package config directory
+        Nipype workflow for tumor segmentation
     """
-    bids_dir = Path(bids_dir)
+    from pathlib import Path
+    from niworkflows.engine.workflows import LiterateWorkflow
+
     output_dir = Path(output_dir)
-
     workflow = LiterateWorkflow(name=name)
-    workflow.base_dir = str(output_dir / ".nipype")
 
-    # Determine package config directory
+    # Input node: receives preprocessed modalities from anat_preproc_wf
+    inputnode = pe.Node(
+        niu.IdentityInterface(
+            fields=[
+                'source_file',    # For BIDS derivatives
+                't1w_preproc',    # Preprocessed T1w
+                't1ce_preproc',   # Preprocessed T1ce
+                't2w_preproc',    # Preprocessed T2w
+                'flair_preproc',  # Preprocessed FLAIR
+                'brain_mask',     # Brain mask (optional reference)
+            ]
+        ),
+        name='inputnode',
+    )
+
+    # Output node: provides segmentation results
+    # tumor_seg: raw model output
+    # tumor_seg_old: old BraTS labels (1=NCR, 2=ED, 3=ET, 4=RC)
+    # tumor_seg_new: new derived labels (1=ET, 2=TC, 3=WT, 4=NETC, 5=SNFH, 6=RC)
+    outputnode = pe.Node(
+        niu.IdentityInterface(
+            fields=[
+                'tumor_seg',      # Raw tumor segmentation map
+                'tumor_seg_old',  # Old BraTS labels
+                'tumor_seg_new',  # New derived labels
+            ]
+        ),
+        name='outputnode',
+    )
+
+    # Sloppy mode: skip actual segmentation and return dummy output
+    if sloppy:
+        LOGGER.warning(
+            "SLOPPY MODE: Skipping actual tumor segmentation, "
+            "returning empty mask for testing purposes"
+        )
+
+        def _create_dummy_segmentation(t1w_preproc, output_dir):
+            """Create an empty segmentation mask matching T1w dimensions for testing."""
+            import os
+            import nibabel as nib
+            import numpy as np
+            from pathlib import Path
+
+            # Load T1w to get dimensions and affine
+            t1w_img = nib.load(t1w_preproc)
+            data_shape = t1w_img.shape[:3]  # Get 3D shape
+
+            # Create empty segmentation (all zeros)
+            dummy_seg = np.zeros(data_shape, dtype=np.uint8)
+
+            # Save to output directory
+            out_dir = Path(output_dir) / "sloppy_seg"
+            os.makedirs(out_dir, exist_ok=True)
+            out_path = str(out_dir / "dummy_tumor_seg.nii.gz")
+
+            seg_img = nib.Nifti1Image(dummy_seg, t1w_img.affine, t1w_img.header)
+            nib.save(seg_img, out_path)
+
+            return out_path
+
+        dummy_seg_node = pe.Node(
+            niu.Function(
+                function=_create_dummy_segmentation,
+                input_names=['t1w_preproc', 'output_dir'],
+                output_names=['seg_file'],
+            ),
+            name='create_dummy_seg',
+        )
+        dummy_seg_node.inputs.output_dir = str(output_dir)
+
+        workflow.connect([
+            (inputnode, dummy_seg_node, [('t1w_preproc', 't1w_preproc')]),
+            # In sloppy mode, all outputs are the same dummy segmentation
+            (dummy_seg_node, outputnode, [
+                ('seg_file', 'tumor_seg'),
+                ('seg_file', 'tumor_seg_old'),
+                ('seg_file', 'tumor_seg_new'),
+            ]),
+        ])
+
+        return workflow
+
+    # Check GPU availability and load appropriate config
     pkg_dir = Path(__file__).parent.parent
     config_dir = pkg_dir / "config"
-
-    # Load configuration files
-    docker_config_path = config_dir / "dockers.json"
     fileformats_path = config_dir / "fileformats.json"
+
+    # Determine if GPU is available
+    gpu_available = False
+    if use_gpu:
+        gpu_available = check_gpu_available()
+        if not gpu_available:
+            LOGGER.warning(
+                "GPU requested but not available. Falling back to CPU-only models."
+            )
+            print("\n⚠️  GPU not detected. Using CPU-only segmentation models.\n")
+
+    # Load appropriate Docker config based on GPU availability
+    if gpu_available:
+        docker_config_path = config_dir / "gpu_dockers.json"
+        if not docker_config_path.exists():
+            # Fallback to main config
+            docker_config_path = config_dir / "dockers.json"
+        LOGGER.info("Using GPU-enabled segmentation models")
+    else:
+        docker_config_path = config_dir / "cpu_dockers.json"
+        if not docker_config_path.exists():
+            # Fallback to main config
+            docker_config_path = config_dir / "dockers.json"
+        LOGGER.info("Using CPU-only segmentation models")
 
     if not docker_config_path.exists():
         raise FileNotFoundError(f"Docker config not found: {docker_config_path}")
@@ -346,42 +759,56 @@ def build_segmentation_workflow(
         with open(fileformats_path) as f:
             fileformats = json.load(f)
 
-    LOGGER.info(
-        "Initialized BraTS segmentation workflow: %s "
-        "(participants: %s, sessions: %s, use_gpu=%s, nprocs=%d)",
-        name,
-        participant_label or "all",
-        session_label or "all",
-        use_gpu,
-        nprocs,
-    )
+    # Check and download Docker images if necessary (skip for custom model_path)
+    if model_path is not None:
+        # Custom model path - skip Docker image checking
+        LOGGER.info("Using custom model path, skipping Docker image checks")
+        available_models = {}
+    elif default_model:
+        # Only check the default model
+        model_keys_to_check = ["econib"]
+        available_models = ensure_docker_images(
+            docker_config,
+            model_keys=model_keys_to_check,
+            verbose=True,
+        )
+        if not available_models:
+            raise RuntimeError(
+                "Default segmentation model (econib/brats-2018) is not available. "
+                "Please ensure Docker is installed and you have internet access."
+            )
+    else:
+        # Check all models for ensemble
+        model_keys_to_check = list(docker_config.keys())
+        available_models = ensure_docker_images(
+            docker_config,
+            model_keys=model_keys_to_check,
+            verbose=True,
+        )
+        if not available_models:
+            raise RuntimeError(
+                "No segmentation models are available. Please ensure Docker is "
+                "installed and you have internet access to download models."
+            )
 
-    # Input node: receives BIDS filenames and paths
-    inputnode = pe.Node(
+    # LOGGER.info(
+    #     "Initialized tumor segmentation workflow: %s (use_gpu=%s)",
+    #     name,
+    #     use_gpu,
+    # )
+
+    # Buffer node to gather all input modalities
+    # The working directory will be created in the node's execution space
+    inputbuffer = pe.Node(
         niu.IdentityInterface(
-            fields=[
-                "source_file",  # BIDS source file for derivatives
-                "t1_file",      # T1w image path
-                "t1ce_file",    # T1w contrast-enhanced image path
-                "t2_file",      # T2w image path
-                "flair_file",   # FLAIR image path
-            ]
+            fields=['t1', 't1ce', 't2', 'flair', 'brain_mask'],
         ),
-        name="inputnode",
+        name='inputbuffer',
     )
 
-    # Output node: provides results
-    outputnode = pe.Node(
-        niu.IdentityInterface(
-            fields=[
-                "tumor_seg",        # Tumor segmentation in native space
-                "tumor_seg_report", # QC report
-            ]
-        ),
-        name="outputnode",
-    )
-
-    # Prepare inputs for container
+    # Prepare inputs for Docker container
+    # Creates working directory in node's execution space and returns path
+    # Applies brain mask to all inputs to ensure zero background (required by BraTS containers)
     prepare_inputs = pe.Node(
         niu.Function(
             function=_prepare_segmentation_inputs,
@@ -390,33 +817,32 @@ def build_segmentation_workflow(
                 "t1ce",
                 "t2",
                 "flair",
-                "output_dir",
-                "temp_dir",
+                "brain_mask",
                 "fileformats_config",
             ],
-            output_names=["prepared"],
+            output_names=["work_dir"],
         ),
         name="prepare_inputs",
     )
-    prepare_inputs.inputs.fileformats_config = fileformats
+    # Note: fileformats_config is set per-model below
 
-    # Create temporary working directory
-    setup_tempdir = pe.Node(
-        niu.Function(
-            function=lambda output_dir: str(Path(output_dir) / "seg_work"),
-            input_names=["output_dir"],
-            output_names=["temp_dir"],
-        ),
-        name="setup_tempdir",
-    )
+    if model_path is not None:
+        # Use custom segmentation model (single model, no fusion)
+        LOGGER.info("ANAT Stage 7: Using custom segmentation model: %s", model_path)
 
-    # Run segmentation container(s)
-    # For default model or custom model
-    if model_path or default_model:
-        # Single model segmentation
-        container_key = list(docker_config.keys())[0]  # Use first configured container
-        container_cfg = docker_config[container_key]
+        # Custom model uses default gz-b17 format
+        model_format = fileformats.get("gz-b17", {})
+        prepare_inputs.inputs.fileformats_config = model_format
 
+        # Custom model configuration
+        custom_model_cfg = {
+            "id": str(model_path),
+            "command": "",
+            "mountpoint": "/data",
+            "runtime": "nvidia" if use_gpu else "runc",
+        }
+
+        # Run custom segmentation container
         run_container = pe.Node(
             niu.Function(
                 function=_run_segmentation_container,
@@ -428,48 +854,235 @@ def build_segmentation_workflow(
                     "gpu_id",
                     "use_new_docker",
                     "verbose",
+                    "_inputs_ready",
                 ],
-                output_names=["success"],
+                output_names=["success", "results_dir"],
             ),
-            name="run_segmentation_container",
+            name="run_segmentation",
+        )
+        run_container.inputs.container_id = "custom"
+        run_container.inputs.config = custom_model_cfg
+        run_container.inputs.gpu_id = "0"  # Always set, used only if GPU enabled in config
+        run_container.inputs.use_new_docker = True
+        run_container.inputs.verbose = True
+        run_container.inputs.output_dir = str(output_dir)
+
+        # Extract segmentation result
+        extract_result = pe.Node(
+            niu.Function(
+                function=_find_segmentation_result,
+                input_names=["results_dir", "container_id", "_wait"],
+                output_names=["seg_file"],
+            ),
+            name="extract_result",
+        )
+        extract_result.inputs.container_id = "custom"
+
+        # Connect workflow for custom model
+        workflow.connect([
+            # Buffer inputs from preprocessed images
+            (inputnode, inputbuffer, [
+                ('t1w_preproc', 't1'),
+                ('t1ce_preproc', 't1ce'),
+                ('t2w_preproc', 't2'),
+                ('flair_preproc', 'flair'),
+                ('brain_mask', 'brain_mask'),
+            ]),
+            # Prepare inputs (creates work_dir in node's execution space)
+            # Applies brain mask to ensure zero background for BraTS containers
+            (inputbuffer, prepare_inputs, [
+                ('t1', 't1'),
+                ('t1ce', 't1ce'),
+                ('t2', 't2'),
+                ('flair', 'flair'),
+                ('brain_mask', 'brain_mask'),
+            ]),
+            # Run container using prepare_inputs work_dir
+            (prepare_inputs, run_container, [
+                ('work_dir', 'temp_dir'),
+                ('work_dir', '_inputs_ready'),
+            ]),
+            # Extract result from run_container's cwd AFTER container completes.
+            # We use run_container.results_dir (not prepare_inputs.work_dir) so
+            # the cached results copy survives prepare_inputs cache invalidation.
+            (run_container, extract_result, [
+                ('results_dir', 'results_dir'),
+                ('success', '_wait'),
+            ]),
+            (extract_result, outputnode, [('seg_file', 'tumor_seg')]),
+        ])
+
+        # Add label conversion nodes
+        convert_old = pe.Node(
+            niu.Function(
+                function=_convert_to_old_labels,
+                input_names=['seg_file'],
+                output_names=['old_labels_file'],
+            ),
+            name='convert_to_old_labels',
+        )
+
+        convert_new = pe.Node(
+            niu.Function(
+                function=_convert_to_new_labels,
+                input_names=['seg_file'],
+                output_names=['new_labels_file'],
+            ),
+            name='convert_to_new_labels',
+        )
+
+        workflow.connect([
+            (extract_result, convert_old, [('seg_file', 'seg_file')]),
+            (extract_result, convert_new, [('seg_file', 'seg_file')]),
+            (convert_old, outputnode, [('old_labels_file', 'tumor_seg_old')]),
+            (convert_new, outputnode, [('new_labels_file', 'tumor_seg_new')]),
+        ])
+
+        model_desc = f"a custom segmentation model ({model_path})"
+
+    elif default_model:
+        # Use econib BraTS 2018 as default model (CPU-compatible)
+        container_key = "econib"  # Michal Marcinkiewicz's BraTS 2018 model
+        if container_key not in docker_config:
+            # Fallback to first available container
+            container_key = list(docker_config.keys())[0]
+            LOGGER.warning(
+                "Default model 'econib' not found in config, using '%s'",
+                container_key,
+            )
+        container_cfg = docker_config[container_key]
+
+        # Get the model's file format from config
+        model_fileformat = container_cfg.get("fileformat", "gz-b17")
+        model_format = fileformats.get(model_fileformat, {})
+        prepare_inputs.inputs.fileformats_config = model_format
+
+        LOGGER.info("Using single model for segmentation: %s (format: %s)", container_key, model_fileformat)
+
+        # Run segmentation container
+        run_container = pe.Node(
+            niu.Function(
+                function=_run_segmentation_container,
+                input_names=[
+                    "temp_dir",
+                    "output_dir",
+                    "container_id",
+                    "config",
+                    "gpu_id",
+                    "use_new_docker",
+                    "verbose",
+                    "_inputs_ready",
+                ],
+                output_names=["success", "results_dir"],
+            ),
+            name="run_segmentation",
         )
         run_container.inputs.container_id = container_key
         run_container.inputs.config = container_cfg
-        run_container.inputs.gpu_id = "0"
+        run_container.inputs.gpu_id = "0"  # Always set, used only if GPU enabled in config
         run_container.inputs.use_new_docker = True
-        run_container.inputs.verbose = True  # Always verbose for container execution
+        run_container.inputs.verbose = True
+        run_container.inputs.output_dir = str(output_dir)
 
-        # Extract results
-        extract_results = pe.Node(
+        # Extract segmentation result
+        extract_result = pe.Node(
             niu.Function(
                 function=_find_segmentation_result,
-                input_names=["results_dir", "container_id"],
+                input_names=["results_dir", "container_id", "_wait"],
                 output_names=["seg_file"],
             ),
-            name="extract_segmentation_results",
+            name="extract_result",
         )
-        extract_results.inputs.container_id = container_key
+        extract_result.inputs.container_id = container_key
 
-        workflow.connect(
-            [
-                (inputnode, prepare_inputs, [("t1_file", "t1")]),
-                (inputnode, prepare_inputs, [("t1ce_file", "t1ce")]),
-                (inputnode, prepare_inputs, [("t2_file", "t2")]),
-                (inputnode, prepare_inputs, [("flair_file", "flair")]),
-                (setup_tempdir, prepare_inputs, [("temp_dir", "temp_dir")]),
-                (setup_tempdir, run_container, [("temp_dir", "temp_dir")]),
-                (run_container, extract_results, [
-                    ("temp_dir", "results_dir"),
-                ]),
-                (extract_results, outputnode, [("seg_file", "tumor_seg")]),
-            ]
+        # Connect workflow for single model
+        workflow.connect([
+            # Buffer inputs from preprocessed images
+            (inputnode, inputbuffer, [
+                ('t1w_preproc', 't1'),
+                ('t1ce_preproc', 't1ce'),
+                ('t2w_preproc', 't2'),
+                ('flair_preproc', 'flair'),
+                ('brain_mask', 'brain_mask'),
+            ]),
+            # Prepare inputs (creates work_dir in node's execution space)
+            # Applies brain mask to ensure zero background for BraTS containers
+            (inputbuffer, prepare_inputs, [
+                ('t1', 't1'),
+                ('t1ce', 't1ce'),
+                ('t2', 't2'),
+                ('flair', 'flair'),
+                ('brain_mask', 'brain_mask'),
+            ]),
+            # Run container using prepare_inputs work_dir
+            (prepare_inputs, run_container, [
+                ('work_dir', 'temp_dir'),
+                ('work_dir', '_inputs_ready'),
+            ]),
+            # Extract result from run_container's cwd AFTER container completes.
+            # We use run_container.results_dir (not prepare_inputs.work_dir) so
+            # the cached results copy survives prepare_inputs cache invalidation.
+            (run_container, extract_result, [
+                ('results_dir', 'results_dir'),
+                ('success', '_wait'),
+            ]),
+            (extract_result, outputnode, [('seg_file', 'tumor_seg')]),
+        ])
+
+        # Add label conversion nodes
+        convert_old = pe.Node(
+            niu.Function(
+                function=_convert_to_old_labels,
+                input_names=['seg_file'],
+                output_names=['old_labels_file'],
+            ),
+            name='convert_to_old_labels',
         )
+
+        convert_new = pe.Node(
+            niu.Function(
+                function=_convert_to_new_labels,
+                input_names=['seg_file'],
+                output_names=['new_labels_file'],
+            ),
+            name='convert_to_new_labels',
+        )
+
+        workflow.connect([
+            (extract_result, convert_old, [('seg_file', 'seg_file')]),
+            (extract_result, convert_new, [('seg_file', 'seg_file')]),
+            (convert_old, outputnode, [('old_labels_file', 'tumor_seg_old')]),
+            (convert_new, outputnode, [('new_labels_file', 'tumor_seg_new')]),
+        ])
+
+        model_desc = f"the {container_key} model (Marcinkiewicz et al., BraTS 2018)"
     else:
-        # Multi-model ensemble segmentation
-        seg_files = []
-        for container_key, container_cfg in docker_config.items():
-            # Create separate container execution for each model
-            run_container_node = pe.Node(
+        # Use all available models and fuse results
+        model_keys = available_models  # Only use models that are available
+        LOGGER.info(
+            "ANAT Stage 7: Using multi-model ensemble for segmentation: %s",
+            ", ".join(model_keys),
+        )
+
+        # For ensemble, use the first model's fileformat as default
+        # (models should use consistent formats, or we'd need per-model prepare_inputs)
+        if model_keys:
+            first_model_cfg = docker_config[model_keys[0]]
+            ensemble_fileformat = first_model_cfg.get("fileformat", "gz-b17")
+            ensemble_format = fileformats.get(ensemble_fileformat, {})
+            prepare_inputs.inputs.fileformats_config = ensemble_format
+            LOGGER.info("Ensemble using file format: %s", ensemble_fileformat)
+        else:
+            # Fallback to default format
+            prepare_inputs.inputs.fileformats_config = fileformats.get("gz-b17", {})
+
+        # Create nodes for each model
+        run_nodes = []
+        extract_nodes = []
+        for model_key in model_keys:
+            model_cfg = docker_config[model_key]
+
+            run_node = pe.Node(
                 niu.Function(
                     function=_run_segmentation_container,
                     input_names=[
@@ -480,69 +1093,118 @@ def build_segmentation_workflow(
                         "gpu_id",
                         "use_new_docker",
                         "verbose",
+                        "_inputs_ready",
                     ],
-                    output_names=["success"],
+                    output_names=["success", "results_dir"],
                 ),
-                name=f"run_container_{container_key}",
+                name=f"run_{model_key.replace('-', '_')}",
             )
-            run_container_node.inputs.container_id = container_key
-            run_container_node.inputs.config = container_cfg
-            run_container_node.inputs.gpu_id = "0"
-            run_container_node.inputs.use_new_docker = True
-            run_container_node.inputs.verbose = True  # Always verbose for container execution
+            run_node.inputs.container_id = model_key
+            run_node.inputs.config = model_cfg
+            run_node.inputs.gpu_id = "0"  # Always set, used only if GPU enabled in config
+            run_node.inputs.use_new_docker = True
+            run_node.inputs.verbose = True
+            run_node.inputs.output_dir = str(output_dir)
+            run_nodes.append(run_node)
 
             extract_node = pe.Node(
                 niu.Function(
                     function=_find_segmentation_result,
-                    input_names=["results_dir", "container_id"],
+                    input_names=["results_dir", "container_id", "_wait"],
                     output_names=["seg_file"],
                 ),
-                name=f"extract_{container_key}",
+                name=f"extract_{model_key.replace('-', '_')}",
             )
-            extract_node.inputs.container_id = container_key
+            extract_node.inputs.container_id = model_key
+            extract_nodes.append(extract_node)
 
-            workflow.add_nodes([run_container_node, extract_node])
-            workflow.connect(
-                [
-                    (setup_tempdir, run_container_node, [("temp_dir", "temp_dir")]),
-                    (run_container_node, extract_node, [
-                        ("temp_dir", "results_dir"),
-                    ]),
-                ]
-            )
-            seg_files.append(extract_node)
-
-        # Fuse multiple segmentations
-        fuse_segs = pe.Node(
-            niu.Function(
-                function=_fuse_segmentations,
-                input_names=["segmentation_files", "output_path", "method"],
-                output_names=["fused_seg"],
-            ),
-            name="fuse_segmentations",
-        )
-        fuse_segs.inputs.output_path = str(output_dir / "fused_segmentation.nii.gz")
-        fuse_segs.inputs.method = "majority"
-
-        workflow.connect(
-            [
-                (inputnode, prepare_inputs, [("t1_file", "t1")]),
-                (inputnode, prepare_inputs, [("t1ce_file", "t1ce")]),
-                (inputnode, prepare_inputs, [("t2_file", "t2")]),
-                (inputnode, prepare_inputs, [("flair_file", "flair")]),
-                (setup_tempdir, prepare_inputs, [("temp_dir", "temp_dir")]),
-                (fuse_segs, outputnode, [("fused_seg", "tumor_seg")]),
-            ]
+        # Merge segmentation results
+        merge_segs = pe.Node(
+            niu.Merge(len(model_keys)),
+            name="merge_segmentations",
         )
 
-    # Setup workflow description
+        # Initialize fusion sub-workflow using BraTS-specific SIMPLE algorithm
+        from oncoprep.workflows.fusion import init_anat_seg_fuse_wf
+
+        fusion_wf = init_anat_seg_fuse_wf(
+            output_dir=str(output_dir),
+            fusion_method="brats",  # BraTS-specific SIMPLE fusion with DICE weighting
+            name="fusion_wf",
+        )
+
+        # Connect workflow for multi-model ensemble
+        workflow.connect([
+            # Buffer inputs from preprocessed images
+            (inputnode, inputbuffer, [
+                ('t1w_preproc', 't1'),
+                ('t1ce_preproc', 't1ce'),
+                ('t2w_preproc', 't2'),
+                ('flair_preproc', 'flair'),
+                ('brain_mask', 'brain_mask'),
+            ]),
+            # Prepare inputs (creates work_dir in node's execution space)
+            # Applies brain mask to ensure zero background for BraTS containers
+            (inputbuffer, prepare_inputs, [
+                ('t1', 't1'),
+                ('t1ce', 't1ce'),
+                ('t2', 't2'),
+                ('flair', 'flair'),
+                ('brain_mask', 'brain_mask'),
+            ]),
+        ])
+
+        # Connect each model's run and extract nodes with proper dependency
+        for i, (run_node, extract_node) in enumerate(zip(run_nodes, extract_nodes)):
+            workflow.connect([
+                (prepare_inputs, run_node, [
+                    ('work_dir', 'temp_dir'),
+                    ('work_dir', '_inputs_ready'),
+                ]),
+                (run_node, extract_node, [
+                    ('results_dir', 'results_dir'),
+                    ('success', '_wait'),
+                ]),  # extract gets results from run_node's cwd (cache-safe)
+                (extract_node, merge_segs, [('seg_file', f'in{i+1}')]),
+            ])
+
+        # Connect fusion sub-workflow and outputs
+        workflow.connect([
+            # Pass merged segmentations to fusion workflow
+            (merge_segs, fusion_wf, [('out', 'inputnode.segmentation_files')]),
+            (inputnode, fusion_wf, [('t1w_preproc', 'inputnode.t1w_preproc')]),
+            # Connect fusion outputs to main workflow outputs
+            (fusion_wf, outputnode, [
+                ('outputnode.fused_seg', 'tumor_seg'),
+                ('outputnode.fused_seg_old', 'tumor_seg_old'),
+                ('outputnode.fused_seg_new', 'tumor_seg_new'),
+            ]),
+        ])
+
+        model_desc = f"an ensemble of {len(model_keys)} models with BraTS-specific SIMPLE fusion (consensus voting with DICE-based quality weighting)"
+
     workflow.__desc__ = f"""
-## Segmentation
+## Tumor Segmentation
 
-Brain tumor segmentation was performed using a DL-based model containerized
-in Docker {"with GPU acceleration" if use_gpu else "using CPU execution"}.
-The workflow supports multi-modal MRI inputs (T1, T1ce, T2, FLAIR) and
-{"employs majority-voting ensemble fusion across multiple trained models." if not (model_path or default_model) else "uses a single trained segmentation model."}
+Brain tumor segmentation was performed using {model_desc}
+{"with GPU acceleration" if use_gpu else "using CPU execution"}.
+Multi-modal MRI inputs (T1w, T1ce, T2w, FLAIR) were used for segmentation.
+
+### Output Labels
+
+**Old BraTS Labels (2017-2020):**
+- Label 1: Necrotic tumor (NT)
+- Label 2: Peritumoral edema (OE)
+- Label 3: Enhancing tumor (ET)
+- Label 4: Resection cavity (RC, optional)
+
+**New Derived Labels (2021+):**
+- Label 1: Enhancing Tumor (ET)
+- Label 2: Tumor Core (TC = NT + ET)
+- Label 3: Whole Tumor (WT = NT + OE + ET)
+- Label 4: Non-Enhancing Tumor Core (NETC)
+- Label 5: Surrounding Non-enhancing FLAIR Hyperintensity (SNFH)
+- Label 6: Resection Cavity (RC, optional)
 
 """
 

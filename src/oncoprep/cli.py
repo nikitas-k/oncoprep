@@ -20,7 +20,6 @@ from nipype import config as ncfg
 from nipype import logging as nlogging
 
 from oncoprep.workflows.base import init_oncoprep_wf
-from oncoprep.workflows.segment import build_segmentation_workflow
 from oncoprep.utils.logging import get_logger
 
 LOGGER = get_logger(__name__)
@@ -188,9 +187,9 @@ def get_parser():
         help='remove facial features from anatomical images using mri_deface for privacy protection',
     )
     g_conf.add_argument(
-        '--skip-segmentation',
+        '--run-segmentation',
         action='store_true',
-        help='skip tumor segmentation step',
+        help='run tumor segmentation step (requires Docker with GPU support)',
     )
     
     # ANTs options
@@ -561,7 +560,9 @@ def build_workflow(opts, retval):
         output_spaces=opts.output_spaces,
         use_gpu=opts.use_gpu,
         deface=opts.deface,
-        skip_segmentation=opts.skip_segmentation,
+        run_segmentation=opts.run_segmentation,
+        seg_model_path=opts.seg_model_path,
+        default_seg=opts.default_seg,
         sloppy=opts.sloppy,
     )
     
