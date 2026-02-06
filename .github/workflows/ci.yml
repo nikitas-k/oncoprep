@@ -39,14 +39,14 @@ jobs:
         with:
           context: .
           file: ./Dockerfile
-          platforms: linux/amd64
           push: false
+          load: true
           tags: oncoprep:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Smoke test
         run: |
-          docker run --rm --platform linux/amd64 oncoprep:ci --version
+          docker run --rm oncoprep:cli --version
 
   docker-publish:
     needs: [lint-test, docker-build]
