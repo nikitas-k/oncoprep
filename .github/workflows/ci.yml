@@ -46,7 +46,7 @@ jobs:
           cache-to: type=gha,mode=max
       - name: Smoke test
         run: |
-          docker run --rm oncoprep:cli --version
+          docker run --rm oncoprep:ci --version
 
   docker-publish:
     needs: [lint-test, docker-build]
