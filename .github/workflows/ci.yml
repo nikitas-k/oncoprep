@@ -46,7 +46,7 @@ jobs:
           cache-to: type=gha,mode=max
       - name: Smoke test
         run: |
-          docker run --rm oncoprep:ci --version
+          docker run --rm --entrypoint python oncoprep:ci -c "import oncoprep; print(oncoprep.__version__)"
 
   docker-publish:
     needs: [lint-test, docker-build]
