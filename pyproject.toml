@@ -28,21 +28,22 @@ dependencies = [
   "niworkflows",
   "templateflow",
   "dcm2niix",
-  "picsl-greedy"
+  "picsl-greedy",
+  "antspyx",
+  "torch",
+  "torchvision",
+  "torchaudio"
 ]
 
 [project.optional-dependencies]
-ants = [
-    "antspyx",
-]
 hd-bet = [
     "hd-bet",
 ]
-torch = [
-    "torch",
-    "torchvision",
-    "torchaudio",
-]
+# torch = [
+#     "torch",
+#     "torchvision",
+#     "torchaudio",
+# ]
 
 dev = [
   "pytest>=7.4",
