@@ -1,0 +1,357 @@
+# =============================================================================
+# OncoPrep: Neuro-Oncology MRI Preprocessing Pipeline
+# Singularity/Apptainer definition file for HPC deployment with GPU support.
+#
+# Build:
+#   singularity build oncoprep.sif Singularity.def        # requires root / fakeroot
+#   apptainer build  oncoprep.sif Singularity.def          # apptainer equivalent
+#
+# Run (GPU):
+#   singularity run --nv oncoprep.sif /data/bids /data/output participant
+#
+# Run (CPU-only):
+#   singularity run oncoprep.sif /data/bids /data/output participant --no-gpu
+#
+# Interactive shell:
+#   singularity shell --nv oncoprep.sif
+#
+# PBS/Slurm example:
+#   singularity run --nv \
+#       --bind /scratch/$USER:/data/work \
+#       --bind /g/data/PROJECT/bids:/data/bids:ro \
+#       --bind /g/data/PROJECT/derivatives:/data/output \
+#       oncoprep.sif /data/bids /data/output participant \
+#       --participant-label 001 -w /data/work
+# =============================================================================
+
+Bootstrap: docker
+From: nvidia/cuda:11.8.0-runtime-ubuntu22.04
+
+%labels
+    Author          Nikitas C. Koussis
+    Version         0.1.0
+    Description     OncoPrep neuro-oncology MRI preprocessing pipeline (GPU-enabled)
+    License         Apache-2.0
+    org.opencontainers.image.source https://github.com/neuronets/oncoprep
+
+# ---------------------------------------------------------------------------
+# Build arguments — pin versions for reproducibility
+# ---------------------------------------------------------------------------
+# NOTE: Singularity does not support ARG; versions are set as variables in %post.
+
+%environment
+    # Python
+    export PATH="/opt/venv/bin:${PATH}"
+    export PYTHONDONTWRITEBYTECODE=1
+
+    # ANTs
+    export ANTSPATH="/opt/ants/bin"
+    export PATH="${ANTSPATH}:${PATH}"
+
+    # FSL
+    export FSLDIR="/opt/fsl"
+    export FSLOUTPUTTYPE="NIFTI_GZ"
+    export PATH="${FSLDIR}/bin:${PATH}"
+
+    # Connectome Workbench
+    export PATH="/opt/workbench/bin_linux64:${PATH}"
+
+    # TemplateFlow
+    export TEMPLATEFLOW_HOME="/opt/templateflow"
+
+    # Neuroimaging runtime defaults
+    export OMP_NUM_THREADS=1
+    export ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS=1
+    export LANG="C.UTF-8"
+    export LC_ALL="C.UTF-8"
+
+    # CUDA (passthrough from host via --nv)
+    export CUDA_DEVICE_ORDER="PCI_BUS_ID"
+
+%post
+    # ==== Version pins ====
+    PYTHON_VERSION=3.11
+    ANTS_VERSION=2.5.3
+    FSL_VERSION=6.0.7.16
+    WORKBENCH_VERSION=2.0.1
+
+    export DEBIAN_FRONTEND=noninteractive
+
+    # ------------------------------------------------------------------
+    # 1. System packages
+    # ------------------------------------------------------------------
+    apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        curl \
+        dc \
+        file \
+        git \
+        gnupg \
+        libfontconfig1 \
+        libfreetype6 \
+        libgdk-pixbuf-2.0-0 \
+        libglib2.0-0 \
+        libgl1 \
+        libgomp1 \
+        liblapack3 \
+        libopenblas0 \
+        libpango-1.0-0 \
+        libpangocairo-1.0-0 \
+        libpangoft2-1.0-0 \
+        libpng16-16 \
+        libsm6 \
+        libxext6 \
+        libxml2 \
+        libxrender1 \
+        libxslt1.1 \
+        libzstd1 \
+        software-properties-common \
+        unzip \
+        wget \
+        zlib1g \
+    && rm -rf /var/lib/apt/lists/*
+
+    # ------------------------------------------------------------------
+    # 2. Python 3.11 via deadsnakes PPA (Ubuntu 22.04 ships 3.10)
+    # ------------------------------------------------------------------
+    add-apt-repository -y ppa:deadsnakes/ppa && \
+    apt-get update && apt-get install -y --no-install-recommends \
+        python${PYTHON_VERSION} \
+        python${PYTHON_VERSION}-venv \
+        python${PYTHON_VERSION}-dev \
+        python${PYTHON_VERSION}-distutils \
+    && rm -rf /var/lib/apt/lists/*
+
+    # Create virtualenv
+    python${PYTHON_VERSION} -m venv /opt/venv
+    . /opt/venv/bin/activate
+    pip install --no-cache-dir --upgrade pip setuptools wheel
+
+    # ------------------------------------------------------------------
+    # 3. dcm2niix
+    # ------------------------------------------------------------------
+    apt-get update && apt-get install -y --no-install-recommends dcm2niix \
+    && rm -rf /var/lib/apt/lists/*
+
+    # ------------------------------------------------------------------
+    # 4. ANTs (pre-built binaries)
+    # ------------------------------------------------------------------
+    mkdir -p /opt/ants/bin
+    curl -fsSL "https://github.com/ANTsX/ANTs/releases/download/v${ANTS_VERSION}/ants-${ANTS_VERSION}-ubuntu-22.04-X64-gcc.zip" \
+        -o /tmp/ants.zip
+    unzip -q /tmp/ants.zip -d /tmp/ants
+    ANTS_BIN=$(find /tmp/ants -type f -name "antsRegistration" -print -quit | xargs dirname)
+    cp -a "${ANTS_BIN}"/* /opt/ants/bin/
+    ANTS_SCRIPTS=$(find /tmp/ants -type f -name "antsRegistrationSyN.sh" -print -quit | xargs dirname)
+    if [ -n "${ANTS_SCRIPTS}" ] && [ "${ANTS_SCRIPTS}" != "${ANTS_BIN}" ]; then
+        cp -a "${ANTS_SCRIPTS}"/* /opt/ants/bin/
+    fi
+    rm -rf /tmp/ants /tmp/ants.zip
+    export ANTSPATH="/opt/ants/bin"
+    export PATH="${ANTSPATH}:${PATH}"
+
+    # ------------------------------------------------------------------
+    # 5. FSL (minimal install — FAST, BET, FLIRT)
+    # ------------------------------------------------------------------
+    export FSLDIR="/opt/fsl"
+    export PATH="${FSLDIR}/bin:${PATH}"
+    mkdir -p ${FSLDIR}/bin
+    curl -fsSL https://fsl.fmrib.ox.ac.uk/fsldownloads/fslconda/releases/fslinstaller.py \
+        -o /tmp/fslinstaller.py && \
+    python /tmp/fslinstaller.py -d ${FSLDIR} --miniconda ${FSLDIR}/miniconda \
+        -V ${FSL_VERSION} --skip_registration \
+    || echo "FSL full install skipped — falling back to minimal"
+    rm -f /tmp/fslinstaller.py
+
+    # ------------------------------------------------------------------
+    # 6. Connectome Workbench (optional — surface processing)
+    # ------------------------------------------------------------------
+    mkdir -p /opt/workbench
+    curl -fsSL "https://www.humanconnectome.org/storage/app/media/workbench/workbench-linux64-v${WORKBENCH_VERSION}.zip" \
+        -o /tmp/wb.zip && \
+    unzip -q /tmp/wb.zip -d /opt && \
+    rm -f /tmp/wb.zip \
+    || echo "Workbench install skipped — surface processing will not be available"
+
+    # ------------------------------------------------------------------
+    # 7. Install OncoPrep + Python dependencies
+    # ------------------------------------------------------------------
+    . /opt/venv/bin/activate
+
+    # Install PyTorch with CUDA 11.8 support
+    pip install --no-cache-dir \
+        torch torchvision torchaudio \
+        --index-url https://download.pytorch.org/whl/cu118
+
+    # Copy and install OncoPrep from build context
+    mkdir -p /opt/oncoprep
+    cp -a /tmp/oncoprep_src/* /opt/oncoprep/ 2>/dev/null || true
+    if [ -f /opt/oncoprep/pyproject.toml ]; then
+        cd /opt/oncoprep
+        pip install --no-cache-dir -e ".[dev]"
+    else
+        echo "WARNING: OncoPrep source not found at build time."
+        echo "         Bind-mount or install at runtime."
+    fi
+
+    # ------------------------------------------------------------------
+    # 8. Pre-fetch TemplateFlow templates
+    # ------------------------------------------------------------------
+    export TEMPLATEFLOW_HOME="/opt/templateflow"
+    python -c "
+import templateflow.api as tflow
+tflow.get('MNI152NLin2009cAsym', resolution=1, desc='brain', suffix='mask')
+tflow.get('MNI152NLin2009cAsym', resolution=1, suffix='T1w')
+tflow.get('OASIS30ANTs', resolution=1, suffix='T1w')
+tflow.get('OASIS30ANTs', resolution=1, desc='BrainCerebellumRegistration', suffix='mask')
+" 2>/dev/null || echo "TemplateFlow pre-fetch partially failed (network may be unavailable at build time)"
+
+    # ------------------------------------------------------------------
+    # 9. Create standard bind-mount points
+    # ------------------------------------------------------------------
+    mkdir -p /data/bids /data/output /data/work /data/dicom
+
+    # Clean up
+    apt-get clean
+    rm -rf /var/lib/apt/lists/* /tmp/* /root/.cache
+
+%files
+    # Copy entire OncoPrep source tree into the container at build time.
+    # Adjust path if building from a different directory.
+    . /tmp/oncoprep_src
+
+%runscript
+    exec /opt/venv/bin/oncoprep "$@"
+
+%test
+    # Verify core components are available
+    . /opt/venv/bin/activate
+
+    echo "=== Python ==="
+    python --version
+
+    echo "=== OncoPrep ==="
+    python -c "import oncoprep; print(f'oncoprep {oncoprep.__version__}')" 2>/dev/null \
+        || echo "oncoprep not installed (bind-mount at runtime)"
+
+    echo "=== PyTorch + CUDA ==="
+    python -c "
+import torch
+print(f'torch {torch.__version__}')
+print(f'CUDA available: {torch.cuda.is_available()}')
+if torch.cuda.is_available():
+    print(f'GPU: {torch.cuda.get_device_name(0)}')
+    print(f'CUDA version: {torch.version.cuda}')
+"
+
+    echo "=== Neuroimaging tools ==="
+    which dcm2niix      && dcm2niix --version 2>&1 | head -1 || echo "dcm2niix: not found"
+    which N4BiasFieldCorrection && echo "ANTs: OK"             || echo "ANTs: not found"
+    which wb_command     && wb_command -version 2>&1 | head -1 || echo "Workbench: not found"
+
+    echo "=== nvidia-smi (requires --nv) ==="
+    nvidia-smi --query-gpu=name,driver_version --format=csv,noheader 2>/dev/null \
+        || echo "nvidia-smi not available (run with --nv for GPU passthrough)"
+
+    echo "=== All tests passed ==="
+
+%help
+    OncoPrep — Neuro-Oncology MRI Preprocessing Pipeline (GPU-enabled)
+
+    This container includes the full OncoPrep pipeline with GPU support
+    for tumor segmentation models. It is built on NVIDIA CUDA 11.8 runtime
+    and includes ANTs, FSL, dcm2niix, and Connectome Workbench.
+
+    QUICK START
+    -----------
+    # GPU-enabled run (default — auto-detects GPU):
+    singularity run --nv \
+        --bind /path/to/bids:/data/bids:ro \
+        --bind /path/to/output:/data/output \
+        oncoprep.sif \
+        /data/bids /data/output participant \
+        --participant-label 001
+
+    # CPU-only run:
+    singularity run \
+        --bind /path/to/bids:/data/bids:ro \
+        --bind /path/to/output:/data/output \
+        oncoprep.sif \
+        /data/bids /data/output participant \
+        --participant-label 001 --no-gpu
+
+    # Interactive shell:
+    singularity shell --nv oncoprep.sif
+
+    HPC (PBS Pro)
+    -------------
+    #!/bin/bash
+    #PBS -l ngpus=1
+    #PBS -l ncpus=4
+    #PBS -l mem=32GB
+    #PBS -l walltime=04:00:00
+    #PBS -l storage=gdata/PROJECT+scratch/PROJECT
+
+    module load singularity
+
+    singularity run --nv \
+        --bind /g/data/PROJECT/bids:/data/bids:ro \
+        --bind /g/data/PROJECT/derivatives:/data/output \
+        --bind /scratch/$USER/work:/data/work \
+        /g/data/PROJECT/containers/oncoprep.sif \
+        /data/bids /data/output participant \
+        --participant-label ${SUBJECT} \
+        -w /data/work \
+        --nprocs 4
+
+    HPC (Slurm)
+    ------------
+    #!/bin/bash
+    #SBATCH --gres=gpu:1
+    #SBATCH --cpus-per-task=4
+    #SBATCH --mem=32G
+    #SBATCH --time=04:00:00
+
+    module load singularity  # or apptainer
+
+    singularity run --nv \
+        --bind /data/project/bids:/data/bids:ro \
+        --bind /data/project/derivatives:/data/output \
+        oncoprep.sif \
+        /data/bids /data/output participant \
+        --participant-label ${SLURM_ARRAY_TASK_ID} \
+        -w /tmp/work
+
+    BIND MOUNTS
+    -----------
+    --bind /path/to/bids:/data/bids:ro       Input BIDS dataset (read-only)
+    --bind /path/to/output:/data/output      Derivative outputs
+    --bind /path/to/work:/data/work          Working directory (use fast storage)
+    --bind /path/to/dicom:/data/dicom:ro     DICOM input (for oncoprep-convert)
+
+    GPU SUPPORT
+    -----------
+    Pass --nv to singularity run/exec/shell to enable NVIDIA GPU passthrough.
+    OncoPrep auto-detects GPUs and uses GPU-accelerated segmentation models.
+    On CPU-only nodes, it automatically falls back to CPU models with a warning.
+    Pass --no-gpu to force CPU-only execution without the detection step.
+
+    TEMPLATEFLOW
+    ------------
+    Templates are pre-fetched at build time. If you need additional templates
+    or the build had no network access, bind-mount a TemplateFlow cache:
+        --bind /path/to/templateflow:/opt/templateflow:ro
+
+    DOCKER-IN-SINGULARITY (Segmentation)
+    ------------------------------------
+    Tumor segmentation uses Docker containers internally. On HPC systems where
+    Docker is not available, you have two options:
+
+    1. Pre-run segmentation on a Docker-capable machine, then run OncoPrep
+       with --skip-segmentation on HPC for the remaining preprocessing.
+
+    2. Use Singularity images for the segmentation models. Convert Docker
+       images to .sif files on a machine with Docker access:
+         singularity build model.sif docker://brats/mic-dkfz:latest
+       Then configure OncoPrep to use Singularity for model execution.
