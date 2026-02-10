@@ -119,19 +119,34 @@ COPY pyproject.toml README.md LICENSE ./
 COPY setup.py* ./
 COPY src/ ./src/
 
-# Install OncoPrep and all core dependencies
-RUN pip install --no-cache-dir -e ".[dev]" && \
-    pip install --no-cache-dir picsl-greedy
+# Upgrade pip first (base image ships old pip that may fail to find wheels)
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 
-# Pre-fetch TemplateFlow templates used by default
+# Install OncoPrep and all core dependencies
+RUN pip install --no-cache-dir -e ".[dev]"
+
+# Pre-fetch ALL TemplateFlow templates used by OncoPrep
+# (ensures offline operation on HPC / air-gapped systems)
 ENV TEMPLATEFLOW_HOME="/opt/templateflow"
-RUN python -c " \
-    import templateflow.api as tflow; \
-    tflow.get('MNI152NLin2009cAsym', resolution=1, desc='brain', suffix='mask'); \
-    tflow.get('MNI152NLin2009cAsym', resolution=1, suffix='T1w'); \
-    tflow.get('OASIS30ANTs', resolution=1, suffix='T1w'); \
-    tflow.get('OASIS30ANTs', resolution=1, desc='BrainCerebellumRegistration', suffix='mask'); \
-    " 2>/dev/null || echo "TemplateFlow pre-fetch partially failed (network may be unavailable)"
+RUN python -c "\
+import templateflow.api as tflow; \
+tflow.get('MNI152NLin2009cAsym', resolution=1, desc=None, suffix='T1w'); \
+tflow.get('MNI152NLin2009cAsym', resolution=1, desc='brain', suffix='mask'); \
+tflow.get('MNI152NLin2009cAsym', resolution=1, desc=None, suffix='T2w'); \
+tflow.get('MNI152NLin2009cAsym', resolution=2, desc=None, suffix='T1w'); \
+tflow.get('MNI152NLin2009cAsym', resolution=2, desc='brain', suffix='mask'); \
+tflow.get('MNI152NLin2009cAsym', resolution=2, desc=None, suffix='T2w'); \
+tflow.get('OASIS30ANTs', resolution=1, suffix='T1w'); \
+tflow.get('OASIS30ANTs', resolution=1, desc='brain', suffix='mask'); \
+tflow.get('OASIS30ANTs', resolution=1, label='brain', suffix='mask'); \
+tflow.get('OASIS30ANTs', resolution=1, desc='BrainCerebellumRegistration', suffix='mask'); \
+tflow.get('OASIS30ANTs', resolution=1, desc='4', suffix='dseg'); \
+[tflow.get('fsLR', density=d, hemi=h, suffix=s) for d in ('32k','59k') for h in ('L','R') for s in ('midthickness','sphere')]; \
+[tflow.get('fsLR', density=d, hemi=h, desc='nomedialwall', suffix='dparc') for d in ('32k','59k') for h in ('L','R')]; \
+[tflow.get('fsaverage', density='164k', hemi=h, suffix=s) for h in ('L','R') for s in ('sphere','sulc')]; \
+[tflow.get('fsaverage', density='10k', hemi=h, suffix='sphere') for h in ('L','R')]; \
+print('TemplateFlow pre-fetch complete:', tflow.TF_LAYOUT.root); \
+"
 
 # ---------------------------------------------------------------------------
 # Runtime configuration

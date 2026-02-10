@@ -196,16 +196,50 @@ From: nvidia/cuda:11.8.0-runtime-ubuntu22.04
     fi
 
     # ------------------------------------------------------------------
-    # 8. Pre-fetch TemplateFlow templates
+    # 8. Pre-fetch ALL TemplateFlow templates used by OncoPrep
+    #    (HPC compute nodes have no internet access)
     # ------------------------------------------------------------------
     export TEMPLATEFLOW_HOME="/opt/templateflow"
     python -c "
 import templateflow.api as tflow
+
+# --- MNI152NLin2009cAsym (default output space) ---
+tflow.get('MNI152NLin2009cAsym', resolution=1, desc=None, suffix='T1w')
 tflow.get('MNI152NLin2009cAsym', resolution=1, desc='brain', suffix='mask')
-tflow.get('MNI152NLin2009cAsym', resolution=1, suffix='T1w')
+tflow.get('MNI152NLin2009cAsym', resolution=1, desc=None, suffix='T2w')
+tflow.get('MNI152NLin2009cAsym', resolution=2, desc=None, suffix='T1w')       # sloppy mode
+tflow.get('MNI152NLin2009cAsym', resolution=2, desc='brain', suffix='mask')   # sloppy mode
+tflow.get('MNI152NLin2009cAsym', resolution=2, desc=None, suffix='T2w')       # sloppy mode
+
+# --- OASIS30ANTs (skull stripping template) ---
 tflow.get('OASIS30ANTs', resolution=1, suffix='T1w')
+tflow.get('OASIS30ANTs', resolution=1, desc='brain', suffix='mask')
+tflow.get('OASIS30ANTs', resolution=1, label='brain', suffix='mask')
 tflow.get('OASIS30ANTs', resolution=1, desc='BrainCerebellumRegistration', suffix='mask')
-" 2>/dev/null || echo "TemplateFlow pre-fetch partially failed (network may be unavailable at build time)"
+tflow.get('OASIS30ANTs', resolution=1, desc='4', suffix='dseg')
+
+# --- fsLR (CIFTI grayordinates surface space) ---
+for den in ('32k', '59k'):
+    for hemi in ('L', 'R'):
+        tflow.get('fsLR', density=den, hemi=hemi, suffix='midthickness')
+        tflow.get('fsLR', density=den, hemi=hemi, suffix='sphere')
+        tflow.get('fsLR', density=den, hemi=hemi, desc='nomedialwall', suffix='dparc')
+
+# --- fsaverage (MSM registration, surface resampling) ---
+for den in ('164k',):
+    for hemi in ('L', 'R'):
+        try: tflow.get('fsaverage', density=den, hemi=hemi, suffix='sphere')
+        except: pass
+        try: tflow.get('fsaverage', density=den, hemi=hemi, suffix='sulc')
+        except: pass
+
+# --- fsaverage5 (surface output space) ---
+for hemi in ('L', 'R'):
+    try: tflow.get('fsaverage', density='10k', hemi=hemi, suffix='sphere')
+    except: pass
+
+print('TemplateFlow pre-fetch complete:', tflow.TF_LAYOUT.root)
+" || echo "WARNING: TemplateFlow pre-fetch partially failed (check network at build time)"
 
     # ------------------------------------------------------------------
     # 9. Create standard bind-mount points
@@ -339,8 +373,14 @@ if torch.cuda.is_available():
 
     TEMPLATEFLOW
     ------------
-    Templates are pre-fetched at build time. If you need additional templates
-    or the build had no network access, bind-mount a TemplateFlow cache:
+    All templates required by OncoPrep are pre-fetched at build time:
+      - MNI152NLin2009cAsym (res-01 + res-02): T1w, T2w, brain mask
+      - OASIS30ANTs (res-01): T1w, brain masks, dseg
+      - fsLR (32k + 59k): midthickness, sphere, nomedialwall dparc
+      - fsaverage (164k): sphere, sulc
+      - fsaverage5 (10k): sphere
+    No internet access is needed on compute nodes.
+    To override with a custom cache, bind-mount:
         --bind /path/to/templateflow:/opt/templateflow:ro
 
     DOCKER-IN-SINGULARITY (Segmentation)
