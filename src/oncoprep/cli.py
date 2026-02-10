@@ -15,27 +15,18 @@ from shutil import copyfile
 from subprocess import CalledProcessError, TimeoutExpired, check_call
 from time import strftime
 
-from bids.layout import BIDSLayout, Query
-from nipype import config as ncfg
-from nipype import logging as nlogging
-
-from oncoprep.workflows.base import init_oncoprep_wf
-from oncoprep.utils.logging import get_logger
-
-LOGGER = get_logger(__name__)
-
 
 def main():
     """Set an entrypoint for oncoprep."""
-    # Handle --version early (before argparse complains about missing positionals)
+    # Handle --version early (before heavy imports that trigger TemplateFlow indexing)
     if '--version' in sys.argv:
         try:
-            import oncoprep
-            print(f"oncoprep {oncoprep.__version__}")
+            from oncoprep import __version__
+            print(f"oncoprep {__version__}")
         except (ImportError, AttributeError):
             print("oncoprep 0.1.0")
         return
-    
+
     opts = get_parser().parse_args()
     return build_opts(opts)
 
@@ -320,6 +311,9 @@ def get_parser():
 def build_opts(opts):
     """Trigger a new process that builds the workflow graph, based on the input options."""
     import gc
+
+    from nipype import config as ncfg
+    from nipype import logging as nlogging
     
     set_start_method('forkserver', force=True)
     
@@ -397,8 +391,13 @@ def build_workflow(opts, retval):
     a hard-limited memory-scope.
     """
     from os import cpu_count
-    
+
+    from bids.layout import BIDSLayout, Query
+    from nipype import config as ncfg
+    from nipype import logging as nlogging
     from niworkflows.utils.bids import collect_participants
+
+    from oncoprep.workflows.base import init_oncoprep_wf
     
     logger = logging.getLogger('nipype.workflow')
     

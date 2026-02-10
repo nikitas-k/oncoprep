@@ -20,6 +20,7 @@
 *.egg-info/
 *work/
 *.DS_Store
+*dist
 
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs

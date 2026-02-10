@@ -16,6 +16,7 @@ classifiers = [
 ]
 dependencies = [
   "acres",
+  "numpy<2",
   "nipype>=1.8",
   "nibabel>=5.1",
   "nilearn>=0.10",
