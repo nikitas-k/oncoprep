@@ -121,6 +121,95 @@ docker build --platform linux/amd64 -t oncoprep:latest .
 
 > **Note:** The image targets `linux/amd64`. On Apple Silicon Macs, Docker Desktop will use Rosetta emulation automatically, but ANTs binaries may hit `Illegal instruction` errors due to AVX instruction limitations. Use the native pip install for local development on ARM Macs.
 
+## HPC / Singularity
+
+On HPC systems (e.g. NCI Gadi), Docker is unavailable. OncoPrep supports Singularity/Apptainer. All steps below run directly on the **login node** — no need to exec into any container.
+
+### 1. Build the OncoPrep SIF
+
+```bash
+module load singularity
+singularity pull oncoprep.sif docker://nko11/oncoprep:latest
+```
+
+### 2. Pre-download segmentation models
+
+The segmentation models are Docker images that need to be converted to SIF files. A standalone script is included in the repo — no pip install needed:
+
+```bash
+# Download the script (or copy from the repo's scripts/ directory)
+wget -O pull_seg_models.sh https://raw.githubusercontent.com/nikitas-k/oncoprep/main/scripts/pull_seg_models.sh
+
+# Pull all models
+bash pull_seg_models.sh /scratch/$PROJECT/$USER/seg_cache
+
+# Or just CPU models (smaller, no GPU needed)
+bash pull_seg_models.sh /scratch/$PROJECT/$USER/seg_cache --cpu-only
+```
+
+### 3. Run on a compute node
+
+```bash
+singularity run --nv \
+  --bind /scratch/$PROJECT/$USER/seg_cache:/seg_cache \
+  oncoprep.sif \
+  /data/bids /data/output participant \
+  --participant-label sub-001 \
+  --run-segmentation \
+  --container-runtime singularity \
+  --seg-cache-dir /seg_cache
+```
+
+CPU-only (single model):
+
+```bash
+singularity run \
+  --bind /scratch/$PROJECT/$USER/seg_cache:/seg_cache \
+  oncoprep.sif \
+  /data/bids /data/output participant \
+  --participant-label sub-001 \
+  --run-segmentation --default-seg \
+  --container-runtime singularity \
+  --seg-cache-dir /seg_cache
+```
+
+### PBS job script example (NCI Gadi)
+
+```bash
+#!/bin/bash
+#PBS -l ncpus=12,mem=48GB,walltime=04:00:00,jobfs=100GB
+#PBS -l storage=scratch/$PROJECT
+#PBS -l ngpus=1
+#PBS -l wd
+
+module load singularity
+
+SEG_CACHE=/scratch/$PROJECT/$USER/seg_cache
+
+singularity run --nv \
+  --bind $SEG_CACHE:/seg_cache \
+  --bind /scratch/$PROJECT/$USER/bids:/data/bids:ro \
+  --bind /scratch/$PROJECT/$USER/output:/data/output \
+  --bind $PBS_JOBFS:/work \
+  /scratch/$PROJECT/$USER/oncoprep.sif \
+  /data/bids /data/output participant \
+  --participant-label sub-001 \
+  --run-segmentation \
+  --container-runtime singularity \
+  --seg-cache-dir /seg_cache \
+  --work-dir /work
+```
+
+## Pre-downloading models (Docker)
+
+If using Docker and you want to pre-cache models (e.g. for offline use):
+
+```bash
+oncoprep-models pull -o /path/to/seg_cache --runtime docker
+oncoprep /data/bids /data/output participant \
+  --run-segmentation --seg-cache-dir /path/to/seg_cache
+```
+
 ## Development
 
 ```bash

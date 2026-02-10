@@ -19,7 +19,7 @@ from oncoprep.utils.segment import (
     ensure_docker_images,
     detect_container_runtime,
     _sif_path_for_image,
-    _default_sif_cache_dir,
+    _default_seg_cache_dir,
     BRATS_OLD_LABELS,
     BRATS_NEW_LABELS,
 )
@@ -165,7 +165,7 @@ def _run_segmentation_container(
     verbose=True,
     _inputs_ready=None,
     container_runtime="docker",
-    sif_cache_dir=None,
+    seg_cache_dir=None,
 ):
     """Execute a segmentation container via Docker or Singularity/Apptainer.
 
@@ -187,7 +187,7 @@ def _run_segmentation_container(
         Print execution details
     container_runtime : str
         Container runtime to use ("docker", "singularity", or "apptainer")
-    sif_cache_dir : str or None
+    seg_cache_dir : str or None
         Directory containing cached SIF files (Singularity/Apptainer only)
 
     Returns
@@ -214,17 +214,17 @@ def _run_segmentation_container(
     if container_runtime in ("singularity", "apptainer"):
         # ---- Singularity / Apptainer path ----
         # Resolve the SIF file
-        if sif_cache_dir is not None:
+        if seg_cache_dir is not None:
             from pathlib import Path as _Path
             safe_name = image_id.replace("/", "_").replace(":", "_")
-            sif_path = str(_Path(sif_cache_dir) / f"{safe_name}.sif")
+            sif_path = str(_Path(seg_cache_dir) / f"{safe_name}.sif")
         else:
             # Fall back to default cache
             from pathlib import Path as _Path
-            for var in ("ONCOPREP_SIF_CACHE", "SINGULARITY_CACHEDIR", "APPTAINER_CACHEDIR"):
+            for var in ("ONCOPREP_SEG_CACHE", "SINGULARITY_CACHEDIR", "APPTAINER_CACHEDIR"):
                 val = os.environ.get(var)
                 if val:
-                    cache = _Path(val) / "oncoprep_sif"
+                    cache = _Path(val) / "oncoprep_seg"
                     break
             else:
                 cache = _Path.home() / ".cache" / "oncoprep" / "sif"
@@ -266,6 +266,21 @@ def _run_segmentation_container(
         command = " ".join(parts)
     else:
         # ---- Docker path ----
+        # If a seg-cache-dir is set, try loading image from a .tar file
+        if seg_cache_dir is not None:
+            from pathlib import Path as _Path
+            safe_name = image_id.replace("/", "_").replace(":", "_")
+            tar_path = _Path(seg_cache_dir) / f"{safe_name}.tar"
+            if tar_path.is_file():
+                LOGGER.info("Loading Docker image from cache: %s", tar_path)
+                try:
+                    subprocess.run(
+                        ["docker", "load", "-i", str(tar_path)],
+                        check=True, capture_output=True,
+                    )
+                except subprocess.CalledProcessError as e:
+                    LOGGER.warning("docker load failed for %s: %s", tar_path, e)
+
         command = "docker run --rm"
 
         # Check if running on ARM64 (Apple Silicon) - add platform flag
@@ -640,7 +655,7 @@ def init_anat_seg_wf(
     model_path: Optional[Path] = None,
     sloppy: bool = False,
     container_runtime: str = 'auto',
-    sif_cache_dir: Optional[Path] = None,
+    seg_cache_dir: Optional[Path] = None,
     name: str = 'anat_seg_wf',
 ) -> Workflow:
     """
@@ -788,28 +803,28 @@ def init_anat_seg_wf(
         return workflow
 
     # Detect container runtime (Docker vs Singularity/Apptainer)
-    runtime = detect_container_runtime(container_runtime)
+    runtime = detect_container_runtime(container_runtime, seg_cache_dir=seg_cache_dir)
     LOGGER.info("Container runtime: %s", runtime)
 
     # Resolve SIF cache directory for Singularity/Apptainer
-    if runtime != 'docker' and sif_cache_dir is not None:
-        _sif_dir = Path(sif_cache_dir)
+    if runtime != 'docker' and seg_cache_dir is not None:
+        _sif_dir = Path(seg_cache_dir)
         _sif_dir.mkdir(parents=True, exist_ok=True)
     elif runtime != 'docker':
-        _sif_dir = _default_sif_cache_dir()
+        _sif_dir = _default_seg_cache_dir()
     else:
         _sif_dir = None
 
     # Detect container runtime (Docker vs Singularity/Apptainer)
-    runtime = detect_container_runtime(container_runtime)
+    runtime = detect_container_runtime(container_runtime, seg_cache_dir=seg_cache_dir)
     LOGGER.info("Container runtime: %s", runtime)
 
     # Resolve SIF cache directory for Singularity/Apptainer
-    if runtime != 'docker' and sif_cache_dir is not None:
-        _sif_dir = Path(sif_cache_dir)
+    if runtime != 'docker' and seg_cache_dir is not None:
+        _sif_dir = Path(seg_cache_dir)
         _sif_dir.mkdir(parents=True, exist_ok=True)
     elif runtime != 'docker':
-        _sif_dir = _default_sif_cache_dir()
+        _sif_dir = _default_seg_cache_dir()
     else:
         _sif_dir = None
 
@@ -871,7 +886,7 @@ def init_anat_seg_wf(
             model_keys=model_keys_to_check,
             verbose=True,
             runtime=runtime,
-            sif_cache_dir=_sif_dir,
+            seg_cache_dir=_sif_dir,
         )
         if not available_models:
             raise RuntimeError(
@@ -886,7 +901,7 @@ def init_anat_seg_wf(
             model_keys=model_keys_to_check,
             verbose=True,
             runtime=runtime,
-            sif_cache_dir=_sif_dir,
+            seg_cache_dir=_sif_dir,
         )
         if not available_models:
             raise RuntimeError(
@@ -959,7 +974,7 @@ def init_anat_seg_wf(
                     "verbose",
                     "_inputs_ready",
                     "container_runtime",
-                    "sif_cache_dir",
+                    "seg_cache_dir",
                 ],
                 output_names=["success", "results_dir"],
             ),
@@ -972,7 +987,7 @@ def init_anat_seg_wf(
         run_container.inputs.verbose = True
         run_container.inputs.output_dir = str(output_dir)
         run_container.inputs.container_runtime = runtime
-        run_container.inputs.sif_cache_dir = str(_sif_dir) if _sif_dir else None
+        run_container.inputs.seg_cache_dir = str(_sif_dir) if _sif_dir else None
 
         # Extract segmentation result
         extract_result = pe.Node(
@@ -1080,7 +1095,7 @@ def init_anat_seg_wf(
                     "verbose",
                     "_inputs_ready",
                     "container_runtime",
-                    "sif_cache_dir",
+                    "seg_cache_dir",
                 ],
                 output_names=["success", "results_dir"],
             ),
@@ -1093,7 +1108,7 @@ def init_anat_seg_wf(
         run_container.inputs.verbose = True
         run_container.inputs.output_dir = str(output_dir)
         run_container.inputs.container_runtime = runtime
-        run_container.inputs.sif_cache_dir = str(_sif_dir) if _sif_dir else None
+        run_container.inputs.seg_cache_dir = str(_sif_dir) if _sif_dir else None
 
         # Extract segmentation result
         extract_result = pe.Node(
@@ -1206,7 +1221,7 @@ def init_anat_seg_wf(
                         "verbose",
                         "_inputs_ready",
                         "container_runtime",
-                        "sif_cache_dir",
+                        "seg_cache_dir",
                     ],
                     output_names=["success", "results_dir"],
                 ),
@@ -1219,7 +1234,7 @@ def init_anat_seg_wf(
             run_node.inputs.verbose = True
             run_node.inputs.output_dir = str(output_dir)
             run_node.inputs.container_runtime = runtime
-            run_node.inputs.sif_cache_dir = str(_sif_dir) if _sif_dir else None
+            run_node.inputs.seg_cache_dir = str(_sif_dir) if _sif_dir else None
             run_nodes.append(run_node)
 
             extract_node = pe.Node(

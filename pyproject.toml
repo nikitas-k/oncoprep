@@ -56,6 +56,7 @@ dev = [
 oncoprep = "oncoprep.cli:main"
 oncoprep-docker = "oncoprep.docker:main"
 oncoprep-convert = "oncoprep.dicom_cli:main"
+oncoprep-models = "oncoprep.models_cli:main"
 # Legacy aliases (deprecated, use oncoprep-dicom instead)
 oncoprep-conversion = "oncoprep.dicom_cli:main"
 oncoprep-batch = "oncoprep.dicom_cli:main"

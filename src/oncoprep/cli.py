@@ -239,13 +239,15 @@ def get_parser():
         'Use "singularity" or "apptainer" on HPC systems without Docker.',
     )
     g_accel.add_argument(
-        '--sif-cache-dir',
+        '--seg-cache-dir',
         metavar='PATH',
         type=Path,
         default=None,
-        help='Directory for cached Singularity/Apptainer SIF files. '
-        'Defaults to $ONCOPREP_SIF_CACHE, $SINGULARITY_CACHEDIR, or '
-        '~/.cache/oncoprep/sif.',
+        help='Directory containing pre-downloaded segmentation model images. '
+        'For Singularity/Apptainer: directory of .sif files. '
+        'For Docker: directory of .tar files (from "docker save"). '
+        'Use "oncoprep-models pull -o DIR" to download models. '
+        'Defaults to $ONCOPREP_SEG_CACHE or ~/.cache/oncoprep/seg.',
     )
     
     # Segmentation options
@@ -581,7 +583,7 @@ def build_workflow(opts, retval):
         default_seg=opts.default_seg,
         sloppy=opts.sloppy,
         container_runtime=opts.container_runtime,
-        sif_cache_dir=opts.sif_cache_dir,
+        seg_cache_dir=opts.seg_cache_dir,
     )
     
     retval['return_code'] = 0

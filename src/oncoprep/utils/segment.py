@@ -34,8 +34,23 @@ def _is_inside_singularity() -> bool:
 
 
 def _find_singularity_cmd() -> Optional[str]:
-    """Return the Singularity/Apptainer executable name, or None."""
+    """Return the Singularity/Apptainer executable name, or None.
+
+    Searches PATH first, then checks common HPC module-install locations
+    (e.g. NCI Gadi ``/opt/singularity/bin``).  Inside a Singularity
+    container the host PATH is normally passed through, but some
+    containers override it.
+    """
+    # Common HPC locations where modules install singularity/apptainer
+    _HPC_SEARCH_PATHS = [
+        "/opt/singularity/bin",
+        "/opt/apptainer/bin",
+        "/usr/local/bin",
+        "/apps/singularity/bin",
+    ]
+
     for cmd in ("apptainer", "singularity"):
+        # First try PATH (fast)
         try:
             result = subprocess.run(
                 [cmd, "--version"],
@@ -46,7 +61,26 @@ def _find_singularity_cmd() -> Optional[str]:
             if result.returncode == 0:
                 return cmd
         except (FileNotFoundError, subprocess.TimeoutExpired):
-            continue
+            pass
+
+        # Then try common HPC absolute paths
+        for search_dir in _HPC_SEARCH_PATHS:
+            full_path = os.path.join(search_dir, cmd)
+            if os.path.isfile(full_path) and os.access(full_path, os.X_OK):
+                try:
+                    result = subprocess.run(
+                        [full_path, "--version"],
+                        capture_output=True,
+                        check=False,
+                        timeout=5,
+                    )
+                    if result.returncode == 0:
+                        LOGGER.debug(
+                            "Found %s at %s (not on PATH)", cmd, full_path
+                        )
+                        return full_path
+                except (FileNotFoundError, subprocess.TimeoutExpired):
+                    continue
     return None
 
 
@@ -66,6 +100,7 @@ def _docker_available() -> bool:
 
 def detect_container_runtime(
     requested: ContainerRuntime = "auto",
+    seg_cache_dir: Optional[Path] = None,
 ) -> str:
     """Determine which container runtime to use.
 
@@ -74,12 +109,20 @@ def detect_container_runtime(
        reachable, use whichever Singularity CLI is available.
     2. If Docker daemon is reachable, use ``"docker"``.
     3. If a Singularity/Apptainer CLI is found, use that.
-    4. Raise :class:`RuntimeError`.
+    4. If inside a Singularity container (env vars set) and a seg-cache
+       directory exists with pre-downloaded images, assume ``"singularity"``
+       — the host binary will be resolved at execution time.
+    5. Raise :class:`RuntimeError`.
 
     Parameters
     ----------
     requested : {"docker", "singularity", "apptainer", "auto"}
         Explicit runtime choice, or ``"auto"`` to detect.
+    seg_cache_dir : Path, optional
+        Directory containing pre-downloaded model images.  For Singularity
+        runtimes this holds ``.sif`` files; for Docker, ``.tar`` files.
+        When provided inside a Singularity/Apptainer container, returns
+        ``"singularity"`` even when no CLI is on PATH.
 
     Returns
     -------
@@ -89,6 +132,16 @@ def detect_container_runtime(
     if requested in ("singularity", "apptainer"):
         cmd = _find_singularity_cmd()
         if cmd is None:
+            # If inside a container with pre-cached SIFs, trust the user
+            if _is_inside_singularity():
+                LOGGER.warning(
+                    "Requested '%s' but CLI was not found on PATH. "
+                    "Proceeding because we are inside a Singularity/Apptainer "
+                    "container.  Ensure the host binary is bind-mounted or "
+                    "available via --bind at `singularity exec` time.",
+                    requested,
+                )
+                return requested
             raise RuntimeError(
                 f"Requested container runtime '{requested}' but neither "
                 "singularity nor apptainer were found on PATH."
@@ -119,6 +172,32 @@ def detect_container_runtime(
                 cmd,
             )
             return cmd
+        # No CLI found, but we ARE inside Singularity — check for cached
+        # SIF files.  The host `singularity` binary may not be on the
+        # container PATH but will be available if the user binds it in or
+        # uses `singularity exec` from the host.
+        cache = seg_cache_dir or _resolve_seg_cache_dir()
+        if cache is not None and cache.is_dir() and any(cache.glob("*.sif")):
+            LOGGER.info(
+                "Inside Singularity container — no CLI found but SIF cache "
+                "directory '%s' contains pre-downloaded images.  Using "
+                "'singularity' runtime.  Ensure the host binary is "
+                "bind-mounted or on PATH.",
+                cache,
+            )
+            return "singularity"
+        # Last resort: still inside Singularity, maybe the user just
+        # forgot --container-runtime. Return "singularity" with a warning.
+        LOGGER.warning(
+            "Inside a Singularity/Apptainer container but no container "
+            "runtime CLI was found on PATH and no pre-cached model images "
+            "were detected.  Pre-download segmentation models with:\n"
+            "  oncoprep-models pull --output-dir /path/to/seg_cache\n"
+            "then re-run with:\n"
+            "  --container-runtime singularity --seg-cache-dir /path/to/seg_cache\n"
+            "Attempting to continue with 'singularity' runtime."
+        )
+        return "singularity"
 
     if _docker_available():
         LOGGER.debug("Docker daemon reachable — using Docker runtime.")
@@ -133,28 +212,61 @@ def detect_container_runtime(
 
     raise RuntimeError(
         "No container runtime found. Install Docker, Singularity, or "
-        "Apptainer to run segmentation models."
+        "Apptainer to run segmentation models.\n\n"
+        "On HPC systems, pre-download segmentation models on a login "
+        "node with:\n"
+        "  oncoprep-models pull --output-dir /path/to/seg_cache\n"
+        "then run with:\n"
+        "  --container-runtime singularity --seg-cache-dir /path/to/seg_cache"
     )
 
 
 # ---------------------------------------------------------------------------
-# SIF cache helpers (Singularity/Apptainer)
+Segmentation model cache helpers
 # ---------------------------------------------------------------------------
 
-def _default_sif_cache_dir() -> Path:
-    """Return the default directory for cached SIF files.
+def _resolve_seg_cache_dir() -> Optional[Path]:
+    """Return the seg-cache directory if it already exists, or None.
 
-    Respects ``ONCOPREP_SIF_CACHE``, ``SINGULARITY_CACHEDIR``, and
-    ``APPTAINER_CACHEDIR`` environment variables (in that order).
-    Falls back to ``~/.cache/oncoprep/sif``.
+    Unlike :func:`_default_seg_cache_dir`, this does **not** create the
+    directory — it is safe to call during auto-detection without side effects.
+
+    Checks (in order): ``ONCOPREP_SEG_CACHE``, ``ONCOPREP_SIF_CACHE``
+    (legacy), ``SINGULARITY_CACHEDIR``, ``APPTAINER_CACHEDIR``, then the
+    default ``~/.cache/oncoprep/seg``.
     """
-    for var in ("ONCOPREP_SIF_CACHE", "SINGULARITY_CACHEDIR", "APPTAINER_CACHEDIR"):
+    for var in ("ONCOPREP_SEG_CACHE", "ONCOPREP_SIF_CACHE",
+                "SINGULARITY_CACHEDIR", "APPTAINER_CACHEDIR"):
         val = os.environ.get(var)
         if val:
-            d = Path(val) / "oncoprep_sif"
+            # Try the new subdir first, fall back to legacy
+            for subdir in ("oncoprep_seg", "oncoprep_sif"):
+                d = Path(val) / subdir
+                if d.is_dir():
+                    return d
+    # Check default paths (new then legacy)
+    for subdir in ("seg", "sif"):
+        d = Path.home() / ".cache" / "oncoprep" / subdir
+        if d.is_dir():
+            return d
+    return None
+
+
+def _default_seg_cache_dir() -> Path:
+    """Return the default directory for cached segmentation model files.
+
+    Respects ``ONCOPREP_SEG_CACHE``, ``ONCOPREP_SIF_CACHE`` (legacy),
+    ``SINGULARITY_CACHEDIR``, and ``APPTAINER_CACHEDIR`` environment
+    variables (in that order).  Falls back to ``~/.cache/oncoprep/seg``.
+    """
+    for var in ("ONCOPREP_SEG_CACHE", "ONCOPREP_SIF_CACHE",
+                "SINGULARITY_CACHEDIR", "APPTAINER_CACHEDIR"):
+        val = os.environ.get(var)
+        if val:
+            d = Path(val) / "oncoprep_seg"
             d.mkdir(parents=True, exist_ok=True)
             return d
-    d = Path.home() / ".cache" / "oncoprep" / "sif"
+    d = Path.home() / ".cache" / "oncoprep" / "seg"
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -165,7 +277,7 @@ def _sif_path_for_image(image_id: str, cache_dir: Optional[Path] = None) -> Path
     Converts ``owner/image:tag`` → ``owner_image_tag.sif``.
     """
     if cache_dir is None:
-        cache_dir = _default_sif_cache_dir()
+        cache_dir = _default_seg_cache_dir()
     safe_name = image_id.replace("/", "_").replace(":", "_")
     return cache_dir / f"{safe_name}.sif"
 
@@ -271,7 +383,7 @@ def check_singularity_image(
 def check_container_image(
     image_id: str,
     runtime: str = "docker",
-    sif_cache_dir: Optional[Path] = None,
+    seg_cache_dir: Optional[Path] = None,
 ) -> bool:
     """Check if a container image is available for the given runtime.
 
@@ -281,8 +393,8 @@ def check_container_image(
         Docker-style image ID
     runtime : str
         Container runtime ("docker", "singularity", or "apptainer")
-    sif_cache_dir : Path, optional
-        SIF cache directory (Singularity/Apptainer only)
+    seg_cache_dir : Path, optional
+        Cache directory for model images
 
     Returns
     -------
@@ -291,7 +403,7 @@ def check_container_image(
     """
     if runtime == "docker":
         return check_docker_image(image_id)
-    return check_singularity_image(image_id, sif_cache_dir)
+    return check_singularity_image(image_id, seg_cache_dir)
 
 
 # ---------------------------------------------------------------------------
@@ -391,7 +503,7 @@ def pull_singularity_image(
 def pull_container_image(
     image_id: str,
     runtime: str = "docker",
-    sif_cache_dir: Optional[Path] = None,
+    seg_cache_dir: Optional[Path] = None,
     verbose: bool = True,
 ) -> bool:
     """Pull a container image using the appropriate runtime.
@@ -402,8 +514,8 @@ def pull_container_image(
         Docker-style image ID
     runtime : str
         Container runtime ("docker", "singularity", or "apptainer")
-    sif_cache_dir : Path, optional
-        SIF cache directory (Singularity/Apptainer only)
+    seg_cache_dir : Path, optional
+        Cache directory for model images
     verbose : bool
         Print progress messages
 
@@ -414,7 +526,7 @@ def pull_container_image(
     """
     if runtime == "docker":
         return pull_docker_image(image_id, verbose=verbose)
-    return pull_singularity_image(image_id, sif_cache_dir, verbose=verbose)
+    return pull_singularity_image(image_id, seg_cache_dir, verbose=verbose)
 
 
 # ---------------------------------------------------------------------------
@@ -426,7 +538,7 @@ def ensure_docker_images(
     model_keys: Optional[List[str]] = None,
     verbose: bool = True,
     runtime: str = "docker",
-    sif_cache_dir: Optional[Path] = None,
+    seg_cache_dir: Optional[Path] = None,
 ) -> List[str]:
     """Ensure container images are available, downloading if necessary.
 
@@ -442,8 +554,8 @@ def ensure_docker_images(
         Print progress messages
     runtime : str
         Container runtime ("docker", "singularity", or "apptainer")
-    sif_cache_dir : Path, optional
-        SIF cache directory (Singularity/Apptainer only)
+    seg_cache_dir : Path, optional
+        Cache directory for model images
 
     Returns
     -------
@@ -470,7 +582,7 @@ def ensure_docker_images(
             LOGGER.warning(f"No image ID for model '{key}'")
             continue
 
-        if check_container_image(image_id, runtime, sif_cache_dir):
+        if check_container_image(image_id, runtime, seg_cache_dir):
             if verbose:
                 LOGGER.debug(f"Image available: {image_id}")
             available_models.append(key)
@@ -486,7 +598,7 @@ def ensure_docker_images(
             print()
 
         for key, image_id in missing_models:
-            if pull_container_image(image_id, runtime, sif_cache_dir, verbose=verbose):
+            if pull_container_image(image_id, runtime, seg_cache_dir, verbose=verbose):
                 available_models.append(key)
             else:
                 LOGGER.warning(
@@ -515,6 +627,57 @@ def ensure_docker_images(
 #   4: Non-Enhancing Tumor Core (NETC) - label 1 from old (NCR only)
 #   5: Surrounding Non-enhancing FLAIR Hyperintensity (SNFH) - label 2 from old (ED)
 #   6: Resection Cavity (RC) - optional, post-operative
+
+
+def get_model_image_ids(
+    gpu: bool = True,
+    cpu: bool = True,
+) -> Dict[str, str]:
+    """Return a ``{model_key: docker_image_id}`` mapping from config files.
+
+    Parameters
+    ----------
+    gpu : bool
+        Include GPU models (default True).
+    cpu : bool
+        Include CPU models (default True).
+
+    Returns
+    -------
+    dict
+        Mapping of model key → Docker image ID.
+    """
+    import json as _json
+
+    config_dir = Path(__file__).parent.parent / "config"
+    images: Dict[str, str] = {}
+
+    configs_to_load: List[Path] = []
+    if gpu:
+        p = config_dir / "gpu_dockers.json"
+        if p.exists():
+            configs_to_load.append(p)
+    if cpu:
+        p = config_dir / "cpu_dockers.json"
+        if p.exists():
+            configs_to_load.append(p)
+
+    # Fall back to main dockers.json if neither cpu/gpu found
+    if not configs_to_load:
+        p = config_dir / "dockers.json"
+        if p.exists():
+            configs_to_load.append(p)
+
+    for cfg_path in configs_to_load:
+        with open(cfg_path) as fh:
+            cfg = _json.load(fh)
+        for key, entry in cfg.items():
+            image_id = entry.get("id")
+            if image_id and key not in images:
+                images[key] = image_id
+
+    return images
+
 
 BRATS_OLD_LABELS = {
     1: 'NCR',   # Necrotic

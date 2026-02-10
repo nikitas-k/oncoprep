@@ -97,7 +97,7 @@ def init_oncoprep_wf(
     default_seg: bool = False,
     sloppy: bool = False,
     container_runtime: str = 'auto',
-    sif_cache_dir: Optional[Path] = None,
+    seg_cache_dir: Optional[Path] = None,
 ) -> Workflow:
     """
     Create the execution graph of OncoPrep for multi-subject processing.
@@ -208,7 +208,7 @@ to workflows in *OncoPrep*'s documentation]\
             default_seg=default_seg,
             sloppy=sloppy,
             container_runtime=container_runtime,
-            sif_cache_dir=sif_cache_dir,
+            seg_cache_dir=seg_cache_dir,
             name=name,
         )
 
@@ -249,7 +249,7 @@ def init_single_subject_wf(
     default_seg: bool = False,
     sloppy: bool = False,
     container_runtime: str = 'auto',
-    sif_cache_dir: Optional[Path] = None,
+    seg_cache_dir: Optional[Path] = None,
     name: str = 'single_subject_wf',
     debug=False,
 ) -> Workflow:
@@ -470,7 +470,7 @@ to workflows in *OncoPrep*'s documentation]\
             default_model=default_seg,
             sloppy=sloppy,
             container_runtime=container_runtime,
-            sif_cache_dir=sif_cache_dir,
+            seg_cache_dir=seg_cache_dir,
             name='anat_seg_wf',
         )
         
