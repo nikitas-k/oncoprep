@@ -14,7 +14,7 @@ directly to the containerised ``oncoprep`` entrypoint.
 
 Install the wrapper with pip::
 
-    pip install oncoprep          # provides both `oncoprep` and `oncoprep-docker`
+    pip install oncoprep-docker
 
 Then run ``oncoprep-docker`` exactly as you would run ``oncoprep`` on a
 bare-metal installation::
@@ -34,11 +34,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-try:
-    from oncoprep import __version__
-except ImportError:
-    __version__ = '0.1.0'
-
+__version__ = '0.1.1'
 __bugreports__ = 'https://github.com/nikitas-k/oncoprep/issues'
 
 DEFAULT_IMAGE = 'nko11/oncoprep:{}'.format(__version__)
@@ -539,5 +535,5 @@ def _merge_help(wrapper_help: str, target_help: str) -> str:
 
 if __name__ == '__main__':
     if '__main__.py' in sys.argv[0]:
-        sys.argv[0] = '{} -m oncoprep.docker'.format(sys.executable)
+        sys.argv[0] = '{} -m oncoprep_docker'.format(sys.executable)
     sys.exit(main())
