@@ -27,9 +27,8 @@ LOGGER = get_logger(__name__)
 
 def main():
     """Set an entrypoint for oncoprep."""
-    opts = get_parser().parse_args()
-    
-    if opts.version:
+    # Handle --version early (before argparse complains about missing positionals)
+    if '--version' in sys.argv:
         try:
             import oncoprep
             print(f"oncoprep {oncoprep.__version__}")
@@ -37,6 +36,7 @@ def main():
             print("oncoprep 0.1.0")
         return
     
+    opts = get_parser().parse_args()
     return build_opts(opts)
 
 
