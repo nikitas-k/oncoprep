@@ -235,9 +235,9 @@ def get_parser():
     # GPU and acceleration options
     g_accel = parser.add_argument_group('GPU and acceleration options')
     g_accel.add_argument(
-        '--use-gpu',
+        '--no-gpu',
         action='store_true',
-        help='Use GPU acceleration if available (for HD-BET and antspy)',
+        help='Disable GPU acceleration and force CPU-only models',
     )
     
     # Segmentation options
@@ -558,7 +558,7 @@ def build_workflow(opts, retval):
         registration_backend=opts.registration_backend,
         longitudinal=opts.longitudinal,
         output_spaces=opts.output_spaces,
-        use_gpu=opts.use_gpu,
+        use_gpu=not opts.no_gpu,
         deface=opts.deface,
         run_segmentation=opts.run_segmentation,
         seg_model_path=opts.seg_model_path,

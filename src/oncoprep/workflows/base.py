@@ -90,7 +90,7 @@ def init_oncoprep_wf(
     registration_backend: str = 'ants',
     longitudinal: bool = False,
     output_spaces: Optional[list] = None,
-    use_gpu: bool = False,
+    use_gpu: bool = True,
     deface: bool = False,
     run_segmentation: bool = False,
     seg_model_path: Optional[Path] = None,
@@ -133,11 +133,11 @@ def init_oncoprep_wf(
     output_spaces : list | None
         Target template spaces (default: ['MNI152NLin2009cAsym'])
     use_gpu : bool
-        Enable GPU acceleration if available
+        Enable GPU acceleration (default: True, use --no-gpu to disable)
     deface : bool
         Apply mri_deface to remove facial features for privacy (default: False)
     run_segmentation : bool
-        Run tumor segmentation step (default: False, requires Docker with GPU)
+        Run tumor segmentation step (default: False, requires Docker; GPU used by default if available)
     sloppy : bool
         Use faster settings for testing
 
@@ -238,7 +238,7 @@ def init_single_subject_wf(
     registration_backend: str = 'ants',
     longitudinal: bool = False,
     output_spaces: Optional[list] = None,
-    use_gpu: bool = False,
+    use_gpu: bool = True,
     deface: bool = False,
     run_segmentation: bool = False,
     seg_model_path: Optional[Path] = None,
@@ -300,11 +300,11 @@ def init_single_subject_wf(
     output_spaces : list | None
         Target template spaces
     use_gpu : bool
-        Enable GPU acceleration
+        Enable GPU acceleration (default: True, use --no-gpu to disable)
     deface : bool
         Apply mri_deface to remove facial features for privacy (default: False)
     run_segmentation : bool
-        Run tumor segmentation (default: False, requires Docker with GPU)
+        Run tumor segmentation (default: False, requires Docker; GPU used by default if available)
     sloppy : bool
         Use faster settings
     name : str

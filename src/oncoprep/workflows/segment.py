@@ -569,7 +569,7 @@ def _convert_to_new_labels(seg_file):
 def init_anat_seg_wf(
     *,
     output_dir: Path,
-    use_gpu: bool = False,
+    use_gpu: bool = True,
     default_model: bool = True,
     model_path: Optional[Path] = None,
     sloppy: bool = False,
@@ -595,7 +595,7 @@ def init_anat_seg_wf(
     output_dir : Path
         Output directory for derivatives
     use_gpu : bool
-        Enable GPU acceleration for Docker containers (default: False)
+        Enable GPU acceleration for Docker containers (default: True)
     default_model : bool
         Use default segmentation model (default: True)
     model_path : Path | None
@@ -730,9 +730,14 @@ def init_anat_seg_wf(
         gpu_available = check_gpu_available()
         if not gpu_available:
             LOGGER.warning(
-                "GPU requested but not available. Falling back to CPU-only models."
+                "No GPU detected \u2014 falling back to CPU-only segmentation models. "
+                "This is expected on CPU-only machines. To suppress this warning, "
+                "pass --no-gpu."
             )
-            print("\n⚠️  GPU not detected. Using CPU-only segmentation models.\n")
+            print(
+                "\n⚠️  No GPU detected. CPU-only segmentation models will be used.\n"
+                "   To silence this warning, pass --no-gpu.\n"
+            )
 
     # Load appropriate Docker config based on GPU availability
     if gpu_available:
