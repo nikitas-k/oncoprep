@@ -51,7 +51,7 @@ From: nvidia/cuda:11.8.0-runtime-ubuntu22.04
     # FSL
     export FSLDIR="/opt/fsl"
     export FSLOUTPUTTYPE="NIFTI_GZ"
-    export PATH="${FSLDIR}/bin:${PATH}"
+    export PATH="${FSLDIR}/share/fsl/bin:${FSLDIR}/bin:${PATH}"
 
     # Connectome Workbench
     export PATH="/opt/workbench/bin_linux64:${PATH}"
@@ -152,17 +152,26 @@ From: nvidia/cuda:11.8.0-runtime-ubuntu22.04
     export PATH="${ANTSPATH}:${PATH}"
 
     # ------------------------------------------------------------------
-    # 5. FSL (minimal install — FAST, BET, FLIRT)
+    # 5. FSL (minimal install — FAST, BET, FLIRT only)
+    # Use conda/mamba to install ONLY the required FSL packages instead
+    # of the full ~5 GB suite.  The fslinstaller.py approach silently
+    # fails in many build environments, leaving the image without `fast`.
     # ------------------------------------------------------------------
     export FSLDIR="/opt/fsl"
-    export PATH="${FSLDIR}/bin:${PATH}"
-    mkdir -p ${FSLDIR}/bin
-    curl -fsSL https://fsl.fmrib.ox.ac.uk/fsldownloads/fslconda/releases/fslinstaller.py \
-        -o /tmp/fslinstaller.py && \
-    python /tmp/fslinstaller.py -d ${FSLDIR} --miniconda ${FSLDIR}/miniconda \
-        -V ${FSL_VERSION} --skip_registration \
-    || echo "FSL full install skipped — falling back to minimal"
-    rm -f /tmp/fslinstaller.py
+    curl -fsSL https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh \
+        -o /tmp/miniforge.sh
+    bash /tmp/miniforge.sh -b -p /tmp/miniforge
+    rm /tmp/miniforge.sh
+    /tmp/miniforge/bin/mamba create -y -p ${FSLDIR} \
+        -c https://fsl.fmrib.ox.ac.uk/fsldownloads/fslconda/public/ \
+        -c conda-forge \
+        fsl-avwutils fsl-fast4 fsl-bet2 fsl-flirt
+    /tmp/miniforge/bin/mamba clean -afy
+    rm -rf /tmp/miniforge
+    export PATH="${FSLDIR}/share/fsl/bin:${FSLDIR}/bin:${PATH}"
+    # Verify FAST is installed — fail the build if not
+    test -x "${FSLDIR}/bin/fast" || \
+        { echo "FATAL: FSL fast not installed"; exit 1; }
 
     # ------------------------------------------------------------------
     # 6. Connectome Workbench (optional — surface processing)
@@ -282,6 +291,7 @@ if torch.cuda.is_available():
     echo "=== Neuroimaging tools ==="
     which dcm2niix      && dcm2niix --version 2>&1 | head -1 || echo "dcm2niix: not found"
     which N4BiasFieldCorrection && echo "ANTs: OK"             || echo "ANTs: not found"
+    which fast           && echo "FSL fast: OK"                || echo "FSL fast: NOT FOUND (tissue segmentation will fail)"
     which wb_command     && wb_command -version 2>&1 | head -1 || echo "Workbench: not found"
 
     echo "=== nvidia-smi (requires --nv) ==="

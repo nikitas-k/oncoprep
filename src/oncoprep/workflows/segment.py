@@ -17,6 +17,9 @@ from oncoprep.utils.segment import (
     check_docker_image,
     pull_docker_image,
     ensure_docker_images,
+    detect_container_runtime,
+    _sif_path_for_image,
+    _default_sif_cache_dir,
     BRATS_OLD_LABELS,
     BRATS_NEW_LABELS,
 )
@@ -161,8 +164,10 @@ def _run_segmentation_container(
     use_new_docker=True,
     verbose=True,
     _inputs_ready=None,
+    container_runtime="docker",
+    sif_cache_dir=None,
 ):
-    """Execute Docker container for segmentation.
+    """Execute a segmentation container via Docker or Singularity/Apptainer.
 
     Parameters
     ----------
@@ -180,6 +185,10 @@ def _run_segmentation_container(
         Use new-style Docker GPU flags (--gpus vs --runtime=nvidia)
     verbose : bool
         Print execution details
+    container_runtime : str
+        Container runtime to use ("docker", "singularity", or "apptainer")
+    sif_cache_dir : str or None
+        Directory containing cached SIF files (Singularity/Apptainer only)
 
     Returns
     -------
@@ -198,42 +207,99 @@ def _run_segmentation_container(
     os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
     os.environ["CUDA_VISIBLE_DEVICES"] = gpu_id
 
-    # Build Docker command
-    command = "docker run --rm"
-
-    # Check if running on ARM64 (Apple Silicon) - add platform flag for x86 emulation
-    machine = platform.machine().lower()
-    if machine in ('arm64', 'aarch64'):
-        command += " --platform linux/amd64"
-        LOGGER.warning(
-            "Running x86_64 container on ARM64 via QEMU emulation. "
-            "This may be slow. For faster processing, use an x86_64 machine."
-        )
-
-    # User mode flags
-    if config.get("user_mode", False):
-        command += " --user $(id -u):$(id -g)"
-
-    # GPU flags
-    if config.get("runtime") == "nvidia":
-        if use_new_docker:
-            command += f" --gpus device={gpu_id}"
-        else:
-            command += f" --runtime=nvidia -e CUDA_VISIBLE_DEVICES={gpu_id}"
-
-    # Custom flags
-    if "flags" in config:
-        command += f" {config['flags']}"
-
-    # Volume mapping
+    image_id = config['id']
     mountpoint = config.get("mountpoint", "/data")
-    command += f" -v {temp_dir}:{mountpoint}"
+    model_command = config.get('command', 'segment')
 
-    # Container ID and execution command
-    command += f" {config['id']} {config.get('command', 'segment')}"
+    if container_runtime in ("singularity", "apptainer"):
+        # ---- Singularity / Apptainer path ----
+        # Resolve the SIF file
+        if sif_cache_dir is not None:
+            from pathlib import Path as _Path
+            safe_name = image_id.replace("/", "_").replace(":", "_")
+            sif_path = str(_Path(sif_cache_dir) / f"{safe_name}.sif")
+        else:
+            # Fall back to default cache
+            from pathlib import Path as _Path
+            for var in ("ONCOPREP_SIF_CACHE", "SINGULARITY_CACHEDIR", "APPTAINER_CACHEDIR"):
+                val = os.environ.get(var)
+                if val:
+                    cache = _Path(val) / "oncoprep_sif"
+                    break
+            else:
+                cache = _Path.home() / ".cache" / "oncoprep" / "sif"
+            safe_name = image_id.replace("/", "_").replace(":", "_")
+            sif_path = str(cache / f"{safe_name}.sif")
+
+        if not os.path.isfile(sif_path):
+            LOGGER.error(
+                f"SIF file not found: {sif_path}. "
+                f"Run: {container_runtime} pull {sif_path} docker://{image_id}"
+            )
+            results_dst = os.path.abspath('results')
+            os.makedirs(results_dst, exist_ok=True)
+            return False, results_dst
+
+        # Build Singularity/Apptainer command
+        parts = [container_runtime, "exec"]
+
+        # GPU support via --nv (NVIDIA) or --rocm (AMD)
+        if config.get("runtime") == "nvidia":
+            parts.append("--nv")
+
+        # Writable tmpdir for containers that write to /tmp
+        parts.extend(["--writable-tmpfs"])
+
+        # Bind mount the data directory
+        parts.extend(["--bind", f"{temp_dir}:{mountpoint}"])
+
+        # Custom flags (adapt Docker flags → Singularity equivalents)
+        # Singularity ignores Docker-only flags; we skip --user, --rm, etc.
+
+        # SIF path
+        parts.append(sif_path)
+
+        # Execution command (split if needed)
+        if model_command and model_command.strip():
+            parts.extend(model_command.split())
+
+        command = " ".join(parts)
+    else:
+        # ---- Docker path ----
+        command = "docker run --rm"
+
+        # Check if running on ARM64 (Apple Silicon) - add platform flag
+        machine = platform.machine().lower()
+        if machine in ('arm64', 'aarch64'):
+            command += " --platform linux/amd64"
+            LOGGER.warning(
+                "Running x86_64 container on ARM64 via QEMU emulation. "
+                "This may be slow. For faster processing, use an x86_64 machine."
+            )
+
+        # User mode flags
+        if config.get("user_mode", False):
+            command += " --user $(id -u):$(id -g)"
+
+        # GPU flags
+        if config.get("runtime") == "nvidia":
+            if use_new_docker:
+                command += f" --gpus device={gpu_id}"
+            else:
+                command += f" --runtime=nvidia -e CUDA_VISIBLE_DEVICES={gpu_id}"
+
+        # Custom flags
+        if "flags" in config:
+            command += f" {config['flags']}"
+
+        # Volume mapping
+        command += f" -v {temp_dir}:{mountpoint}"
+
+        # Container ID and execution command
+        command += f" {image_id} {model_command}"
 
     if verbose:
-        LOGGER.info(f"Executing container: {command}")
+        LOGGER.info(f"Executing container ({container_runtime}): {command}")
 
     try:
         subprocess.run(command, shell=True, check=True, capture_output=True)
@@ -573,6 +639,8 @@ def init_anat_seg_wf(
     default_model: bool = True,
     model_path: Optional[Path] = None,
     sloppy: bool = False,
+    container_runtime: str = 'auto',
+    sif_cache_dir: Optional[Path] = None,
     name: str = 'anat_seg_wf',
 ) -> Workflow:
     """
@@ -719,6 +787,32 @@ def init_anat_seg_wf(
 
         return workflow
 
+    # Detect container runtime (Docker vs Singularity/Apptainer)
+    runtime = detect_container_runtime(container_runtime)
+    LOGGER.info("Container runtime: %s", runtime)
+
+    # Resolve SIF cache directory for Singularity/Apptainer
+    if runtime != 'docker' and sif_cache_dir is not None:
+        _sif_dir = Path(sif_cache_dir)
+        _sif_dir.mkdir(parents=True, exist_ok=True)
+    elif runtime != 'docker':
+        _sif_dir = _default_sif_cache_dir()
+    else:
+        _sif_dir = None
+
+    # Detect container runtime (Docker vs Singularity/Apptainer)
+    runtime = detect_container_runtime(container_runtime)
+    LOGGER.info("Container runtime: %s", runtime)
+
+    # Resolve SIF cache directory for Singularity/Apptainer
+    if runtime != 'docker' and sif_cache_dir is not None:
+        _sif_dir = Path(sif_cache_dir)
+        _sif_dir.mkdir(parents=True, exist_ok=True)
+    elif runtime != 'docker':
+        _sif_dir = _default_sif_cache_dir()
+    else:
+        _sif_dir = None
+
     # Check GPU availability and load appropriate config
     pkg_dir = Path(__file__).parent.parent
     config_dir = pkg_dir / "config"
@@ -776,6 +870,8 @@ def init_anat_seg_wf(
             docker_config,
             model_keys=model_keys_to_check,
             verbose=True,
+            runtime=runtime,
+            sif_cache_dir=_sif_dir,
         )
         if not available_models:
             raise RuntimeError(
@@ -789,6 +885,8 @@ def init_anat_seg_wf(
             docker_config,
             model_keys=model_keys_to_check,
             verbose=True,
+            runtime=runtime,
+            sif_cache_dir=_sif_dir,
         )
         if not available_models:
             raise RuntimeError(
@@ -860,6 +958,8 @@ def init_anat_seg_wf(
                     "use_new_docker",
                     "verbose",
                     "_inputs_ready",
+                    "container_runtime",
+                    "sif_cache_dir",
                 ],
                 output_names=["success", "results_dir"],
             ),
@@ -871,6 +971,8 @@ def init_anat_seg_wf(
         run_container.inputs.use_new_docker = True
         run_container.inputs.verbose = True
         run_container.inputs.output_dir = str(output_dir)
+        run_container.inputs.container_runtime = runtime
+        run_container.inputs.sif_cache_dir = str(_sif_dir) if _sif_dir else None
 
         # Extract segmentation result
         extract_result = pe.Node(
@@ -977,6 +1079,8 @@ def init_anat_seg_wf(
                     "use_new_docker",
                     "verbose",
                     "_inputs_ready",
+                    "container_runtime",
+                    "sif_cache_dir",
                 ],
                 output_names=["success", "results_dir"],
             ),
@@ -988,6 +1092,8 @@ def init_anat_seg_wf(
         run_container.inputs.use_new_docker = True
         run_container.inputs.verbose = True
         run_container.inputs.output_dir = str(output_dir)
+        run_container.inputs.container_runtime = runtime
+        run_container.inputs.sif_cache_dir = str(_sif_dir) if _sif_dir else None
 
         # Extract segmentation result
         extract_result = pe.Node(
@@ -1099,6 +1205,8 @@ def init_anat_seg_wf(
                         "use_new_docker",
                         "verbose",
                         "_inputs_ready",
+                        "container_runtime",
+                        "sif_cache_dir",
                     ],
                     output_names=["success", "results_dir"],
                 ),
@@ -1110,6 +1218,8 @@ def init_anat_seg_wf(
             run_node.inputs.use_new_docker = True
             run_node.inputs.verbose = True
             run_node.inputs.output_dir = str(output_dir)
+            run_node.inputs.container_runtime = runtime
+            run_node.inputs.sif_cache_dir = str(_sif_dir) if _sif_dir else None
             run_nodes.append(run_node)
 
             extract_node = pe.Node(

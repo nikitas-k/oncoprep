@@ -11,8 +11,10 @@ ARG WORKBENCH_VERSION=2.0.1
 
 # ---------------------------------------------------------------------------
 # Stage 1 — System dependencies & neuroimaging tools
+# All neuroimaging binaries (ANTs, FSL, Workbench, segmentation models) are
+# x86_64-only, so we force the platform even when building on ARM hosts.
 # ---------------------------------------------------------------------------
-FROM python:${PYTHON_VERSION}-slim AS base
+FROM --platform=linux/amd64 python:${PYTHON_VERSION}-slim AS base
 
 LABEL maintainer="OncoPrep Contributors"
 LABEL org.opencontainers.image.title="OncoPrep"
@@ -76,18 +78,30 @@ RUN mkdir -p /opt/ants/bin && \
     fi && \
     rm -rf /tmp/ants /tmp/ants.zip
 
-# ---- FSL (minimal — FAST only) ----
-# Install FSL via NeuroDebian-style minimal approach
+# ---- FSL (minimal — FAST, BET, FLIRT only) ----
+# Use conda/mamba to install ONLY the required FSL packages instead of the
+# full ~5 GB suite.  The fslinstaller.py approach silently fails in many
+# Docker build environments, leaving the image without `fast`.
 ARG FSL_VERSION
 ENV FSLDIR="/opt/fsl" \
     FSLOUTPUTTYPE="NIFTI_GZ"
-ENV PATH="${FSLDIR}/bin:${PATH}"
-RUN mkdir -p ${FSLDIR}/bin && \
-    ( curl -fsSL https://fsl.fmrib.ox.ac.uk/fsldownloads/fslconda/releases/fslinstaller.py \
-        -o /tmp/fslinstaller.py && \
-      python /tmp/fslinstaller.py -d ${FSLDIR} --miniconda /opt/fsl/miniconda -V ${FSL_VERSION} --skip_registration \
-    ) || echo "FSL full install skipped — falling back to minimal" && \
-    rm -f /tmp/fslinstaller.py
+ENV PATH="${FSLDIR}/share/fsl/bin:${FSLDIR}/bin:${PATH}" \
+    FSLDIR="${FSLDIR}"
+RUN curl -fsSL https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh \
+        -o /tmp/miniforge.sh && \
+    bash /tmp/miniforge.sh -b -p /opt/miniforge && \
+    rm /tmp/miniforge.sh && \
+    /opt/miniforge/bin/mamba create -y -p ${FSLDIR} \
+        -c https://fsl.fmrib.ox.ac.uk/fsldownloads/fslconda/public/ \
+        -c conda-forge \
+        fsl-avwutils fsl-fast4 fsl-bet2 fsl-flirt && \
+    /opt/miniforge/bin/mamba clean -afy && \
+    rm -rf /opt/miniforge && \
+    # Remove conda Python/pip to avoid shadowing system Python 3.11
+    rm -f ${FSLDIR}/bin/python* ${FSLDIR}/bin/pip* ${FSLDIR}/bin/conda* \
+          ${FSLDIR}/bin/2to3* ${FSLDIR}/bin/idle* ${FSLDIR}/bin/pydoc* && \
+    test -x "${FSLDIR}/bin/fast" || \
+        (echo "FATAL: FSL fast not installed" && exit 1)
 
 # ---- Docker CLI (for tumor segmentation containers) ----
 RUN install -m 0755 -d /etc/apt/keyrings && \
@@ -164,7 +178,7 @@ RUN mkdir -p /data/bids /data/output /data/work /data/dicom
 # Healthcheck — verify core tools are reachable
 HEALTHCHECK --interval=60s --timeout=10s --retries=3 \
     CMD python -c "import oncoprep; print(oncoprep.__version__)" && \
-        which dcm2niix && which N4BiasFieldCorrection
+        which dcm2niix && which N4BiasFieldCorrection && which fast
 
 # Default entrypoint is the main pipeline; override for DICOM conversion
 ENTRYPOINT ["oncoprep"]

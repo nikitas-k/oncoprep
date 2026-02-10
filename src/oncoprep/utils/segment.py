@@ -1,21 +1,181 @@
 """Segmentation utility functions for OncoPrep.
 
 This module provides helper functions for tumor segmentation workflows,
-including Docker container management and GPU detection.
+including container runtime management (Docker and Singularity/Apptainer)
+and GPU detection.
 """
 
 from __future__ import annotations
 
+import os
 import subprocess
-from typing import Dict, List, Optional
+from pathlib import Path
+from typing import Dict, List, Literal, Optional
 
 from oncoprep.utils.logging import get_logger
 
 LOGGER = get_logger(__name__)
 
+# Valid container runtime values
+ContainerRuntime = Literal["docker", "singularity", "apptainer", "auto"]
+
+
+# ---------------------------------------------------------------------------
+# Container runtime detection
+# ---------------------------------------------------------------------------
+
+def _is_inside_singularity() -> bool:
+    """Check if we are running inside a Singularity/Apptainer container."""
+    return bool(
+        os.environ.get("SINGULARITY_CONTAINER")
+        or os.environ.get("APPTAINER_CONTAINER")
+        or os.path.exists("/.singularity.d")
+    )
+
+
+def _find_singularity_cmd() -> Optional[str]:
+    """Return the Singularity/Apptainer executable name, or None."""
+    for cmd in ("apptainer", "singularity"):
+        try:
+            result = subprocess.run(
+                [cmd, "--version"],
+                capture_output=True,
+                check=False,
+                timeout=5,
+            )
+            if result.returncode == 0:
+                return cmd
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            continue
+    return None
+
+
+def _docker_available() -> bool:
+    """Return True if the Docker daemon is reachable."""
+    try:
+        result = subprocess.run(
+            ["docker", "info"],
+            capture_output=True,
+            check=False,
+            timeout=10,
+        )
+        return result.returncode == 0
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return False
+
+
+def detect_container_runtime(
+    requested: ContainerRuntime = "auto",
+) -> str:
+    """Determine which container runtime to use.
+
+    Resolution order for ``"auto"``:
+    1. If inside a Singularity/Apptainer container **and** Docker is not
+       reachable, use whichever Singularity CLI is available.
+    2. If Docker daemon is reachable, use ``"docker"``.
+    3. If a Singularity/Apptainer CLI is found, use that.
+    4. Raise :class:`RuntimeError`.
+
+    Parameters
+    ----------
+    requested : {"docker", "singularity", "apptainer", "auto"}
+        Explicit runtime choice, or ``"auto"`` to detect.
+
+    Returns
+    -------
+    str
+        One of ``"docker"``, ``"singularity"``, or ``"apptainer"``.
+    """
+    if requested in ("singularity", "apptainer"):
+        cmd = _find_singularity_cmd()
+        if cmd is None:
+            raise RuntimeError(
+                f"Requested container runtime '{requested}' but neither "
+                "singularity nor apptainer were found on PATH."
+            )
+        # Honour user's preference (apptainer/singularity) if it exists;
+        # fall back to whichever was actually found.
+        if requested == "apptainer" and cmd == "apptainer":
+            return "apptainer"
+        if requested == "singularity" and cmd == "singularity":
+            return "singularity"
+        return cmd
+
+    if requested == "docker":
+        if not _docker_available():
+            LOGGER.warning(
+                "Requested Docker runtime but daemon is not reachable. "
+                "Container operations may fail."
+            )
+        return "docker"
+
+    # --- auto ---
+    if _is_inside_singularity() and not _docker_available():
+        cmd = _find_singularity_cmd()
+        if cmd:
+            LOGGER.info(
+                "Running inside Singularity/Apptainer container and Docker "
+                "is unavailable — using '%s' for segmentation models.",
+                cmd,
+            )
+            return cmd
+
+    if _docker_available():
+        LOGGER.debug("Docker daemon reachable — using Docker runtime.")
+        return "docker"
+
+    cmd = _find_singularity_cmd()
+    if cmd:
+        LOGGER.info(
+            "Docker not available — falling back to '%s' runtime.", cmd
+        )
+        return cmd
+
+    raise RuntimeError(
+        "No container runtime found. Install Docker, Singularity, or "
+        "Apptainer to run segmentation models."
+    )
+
+
+# ---------------------------------------------------------------------------
+# SIF cache helpers (Singularity/Apptainer)
+# ---------------------------------------------------------------------------
+
+def _default_sif_cache_dir() -> Path:
+    """Return the default directory for cached SIF files.
+
+    Respects ``ONCOPREP_SIF_CACHE``, ``SINGULARITY_CACHEDIR``, and
+    ``APPTAINER_CACHEDIR`` environment variables (in that order).
+    Falls back to ``~/.cache/oncoprep/sif``.
+    """
+    for var in ("ONCOPREP_SIF_CACHE", "SINGULARITY_CACHEDIR", "APPTAINER_CACHEDIR"):
+        val = os.environ.get(var)
+        if val:
+            d = Path(val) / "oncoprep_sif"
+            d.mkdir(parents=True, exist_ok=True)
+            return d
+    d = Path.home() / ".cache" / "oncoprep" / "sif"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _sif_path_for_image(image_id: str, cache_dir: Optional[Path] = None) -> Path:
+    """Return the expected SIF file path for a Docker image ID.
+
+    Converts ``owner/image:tag`` → ``owner_image_tag.sif``.
+    """
+    if cache_dir is None:
+        cache_dir = _default_sif_cache_dir()
+    safe_name = image_id.replace("/", "_").replace(":", "_")
+    return cache_dir / f"{safe_name}.sif"
+
+
+# ---------------------------------------------------------------------------
+# GPU detection
+# ---------------------------------------------------------------------------
 
 def check_gpu_available() -> bool:
-    """Check if NVIDIA GPU is available for Docker containers.
+    """Check if NVIDIA GPU is available for containers.
 
     Returns
     -------
@@ -37,23 +197,29 @@ def check_gpu_available() -> bool:
     except (FileNotFoundError, subprocess.TimeoutExpired):
         pass
 
-    # Check 2: Docker with --gpus works
-    try:
-        result = subprocess.run(
-            ["docker", "run", "--rm", "--gpus", "all", "nvidia/cuda:11.0-base", "nvidia-smi"],
-            capture_output=True,
-            check=False,
-            timeout=30,
-        )
-        if result.returncode == 0:
-            LOGGER.info("GPU available via Docker nvidia runtime")
-            return True
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        pass
+    # Check 2: Docker with --gpus works (only if Docker available)
+    if _docker_available():
+        try:
+            result = subprocess.run(
+                ["docker", "run", "--rm", "--gpus", "all",
+                 "nvidia/cuda:11.0-base", "nvidia-smi"],
+                capture_output=True,
+                check=False,
+                timeout=30,
+            )
+            if result.returncode == 0:
+                LOGGER.info("GPU available via Docker nvidia runtime")
+                return True
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass
 
     LOGGER.info("No GPU detected, will use CPU-only models")
     return False
 
+
+# ---------------------------------------------------------------------------
+# Image availability checks (Docker + Singularity/Apptainer)
+# ---------------------------------------------------------------------------
 
 def check_docker_image(image_id: str) -> bool:
     """Check if a Docker image is available locally.
@@ -79,6 +245,58 @@ def check_docker_image(image_id: str) -> bool:
         LOGGER.error("Docker is not installed or not in PATH")
         return False
 
+
+def check_singularity_image(
+    image_id: str,
+    cache_dir: Optional[Path] = None,
+) -> bool:
+    """Check if a Singularity/Apptainer SIF file exists for the image.
+
+    Parameters
+    ----------
+    image_id : str
+        Docker-style image ID (e.g., 'fabianisensee/isen2018')
+    cache_dir : Path, optional
+        Directory containing cached SIF files
+
+    Returns
+    -------
+    bool
+        True if a SIF file exists, False otherwise
+    """
+    sif = _sif_path_for_image(image_id, cache_dir)
+    return sif.is_file()
+
+
+def check_container_image(
+    image_id: str,
+    runtime: str = "docker",
+    sif_cache_dir: Optional[Path] = None,
+) -> bool:
+    """Check if a container image is available for the given runtime.
+
+    Parameters
+    ----------
+    image_id : str
+        Docker-style image ID
+    runtime : str
+        Container runtime ("docker", "singularity", or "apptainer")
+    sif_cache_dir : Path, optional
+        SIF cache directory (Singularity/Apptainer only)
+
+    Returns
+    -------
+    bool
+        True if the image is available
+    """
+    if runtime == "docker":
+        return check_docker_image(image_id)
+    return check_singularity_image(image_id, sif_cache_dir)
+
+
+# ---------------------------------------------------------------------------
+# Image pulling (Docker + Singularity/Apptainer)
+# ---------------------------------------------------------------------------
 
 def pull_docker_image(image_id: str, verbose: bool = True) -> bool:
     """Pull a Docker image from registry.
@@ -115,12 +333,104 @@ def pull_docker_image(image_id: str, verbose: bool = True) -> bool:
         return False
 
 
+def pull_singularity_image(
+    image_id: str,
+    cache_dir: Optional[Path] = None,
+    verbose: bool = True,
+) -> bool:
+    """Pull a Docker image and convert it to a Singularity/Apptainer SIF.
+
+    Parameters
+    ----------
+    image_id : str
+        Docker-style image ID (pulled via ``docker://``)
+    cache_dir : Path, optional
+        Where to store the SIF file
+    verbose : bool
+        Print progress messages
+
+    Returns
+    -------
+    bool
+        True if successful, False otherwise
+    """
+    cmd = _find_singularity_cmd()
+    if cmd is None:
+        LOGGER.error("Neither singularity nor apptainer found on PATH")
+        return False
+
+    sif = _sif_path_for_image(image_id, cache_dir)
+    if sif.is_file():
+        LOGGER.debug(f"SIF already exists: {sif}")
+        return True
+
+    docker_uri = f"docker://{image_id}"
+    if verbose:
+        LOGGER.info(f"Building SIF from {docker_uri} → {sif}")
+        print(f"  Converting Docker image to SIF: {image_id}...")
+
+    try:
+        subprocess.run(
+            [cmd, "pull", str(sif), docker_uri],
+            check=True,
+            capture_output=not verbose,
+        )
+        if verbose:
+            LOGGER.info(f"Successfully built SIF: {sif}")
+            print(f"  ✓ Downloaded: {image_id} → {sif.name}")
+        return True
+    except subprocess.CalledProcessError as e:
+        LOGGER.error(f"Failed to build SIF for {image_id}: {e}")
+        print(f"  ✗ Failed to download: {image_id}")
+        # Clean up partial downloads
+        if sif.exists():
+            sif.unlink()
+        return False
+
+
+def pull_container_image(
+    image_id: str,
+    runtime: str = "docker",
+    sif_cache_dir: Optional[Path] = None,
+    verbose: bool = True,
+) -> bool:
+    """Pull a container image using the appropriate runtime.
+
+    Parameters
+    ----------
+    image_id : str
+        Docker-style image ID
+    runtime : str
+        Container runtime ("docker", "singularity", or "apptainer")
+    sif_cache_dir : Path, optional
+        SIF cache directory (Singularity/Apptainer only)
+    verbose : bool
+        Print progress messages
+
+    Returns
+    -------
+    bool
+        True if successful, False otherwise
+    """
+    if runtime == "docker":
+        return pull_docker_image(image_id, verbose=verbose)
+    return pull_singularity_image(image_id, sif_cache_dir, verbose=verbose)
+
+
+# ---------------------------------------------------------------------------
+# Unified ensure routine
+# ---------------------------------------------------------------------------
+
 def ensure_docker_images(
     docker_config: Dict[str, Dict],
     model_keys: Optional[List[str]] = None,
     verbose: bool = True,
+    runtime: str = "docker",
+    sif_cache_dir: Optional[Path] = None,
 ) -> List[str]:
-    """Ensure Docker images are available, downloading if necessary.
+    """Ensure container images are available, downloading if necessary.
+
+    Works with both Docker and Singularity/Apptainer runtimes.
 
     Parameters
     ----------
@@ -130,6 +440,10 @@ def ensure_docker_images(
         Specific models to check. If None, checks all models.
     verbose : bool
         Print progress messages
+    runtime : str
+        Container runtime ("docker", "singularity", or "apptainer")
+    sif_cache_dir : Path, optional
+        SIF cache directory (Singularity/Apptainer only)
 
     Returns
     -------
@@ -142,8 +456,9 @@ def ensure_docker_images(
     available_models = []
     missing_models = []
 
+    runtime_label = "Singularity/Apptainer" if runtime != "docker" else "Docker"
     if verbose:
-        print("\nChecking segmentation model availability...")
+        print(f"\nChecking segmentation model availability ({runtime_label})...")
 
     for key in model_keys:
         if key not in docker_config:
@@ -155,7 +470,7 @@ def ensure_docker_images(
             LOGGER.warning(f"No image ID for model '{key}'")
             continue
 
-        if check_docker_image(image_id):
+        if check_container_image(image_id, runtime, sif_cache_dir):
             if verbose:
                 LOGGER.debug(f"Image available: {image_id}")
             available_models.append(key)
@@ -171,7 +486,7 @@ def ensure_docker_images(
             print()
 
         for key, image_id in missing_models:
-            if pull_docker_image(image_id, verbose=verbose):
+            if pull_container_image(image_id, runtime, sif_cache_dir, verbose=verbose):
                 available_models.append(key)
             else:
                 LOGGER.warning(

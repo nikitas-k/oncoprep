@@ -230,6 +230,23 @@ def get_parser():
         action='store_true',
         help='Disable GPU acceleration and force CPU-only models',
     )
+    g_accel.add_argument(
+        '--container-runtime',
+        choices=['auto', 'docker', 'singularity', 'apptainer'],
+        default='auto',
+        help='Container runtime for segmentation models. '
+        '"auto" detects the best available runtime (default: auto). '
+        'Use "singularity" or "apptainer" on HPC systems without Docker.',
+    )
+    g_accel.add_argument(
+        '--sif-cache-dir',
+        metavar='PATH',
+        type=Path,
+        default=None,
+        help='Directory for cached Singularity/Apptainer SIF files. '
+        'Defaults to $ONCOPREP_SIF_CACHE, $SINGULARITY_CACHEDIR, or '
+        '~/.cache/oncoprep/sif.',
+    )
     
     # Segmentation options
     g_seg = parser.add_argument_group('Segmentation options')
@@ -563,6 +580,8 @@ def build_workflow(opts, retval):
         seg_model_path=opts.seg_model_path,
         default_seg=opts.default_seg,
         sloppy=opts.sloppy,
+        container_runtime=opts.container_runtime,
+        sif_cache_dir=opts.sif_cache_dir,
     )
     
     retval['return_code'] = 0
