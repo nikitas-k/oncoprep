@@ -15,6 +15,7 @@ classifiers = [
   "License :: OSI Approved :: MIT License",
 ]
 dependencies = [
+  "acres",
   "nipype>=1.8",
   "nibabel>=5.1",
   "nilearn>=0.10",
@@ -61,6 +62,7 @@ oncoprep-batch = "oncoprep.dicom_cli:main"
 package-dir = {"" = "src"}
 packages = [
   "oncoprep",
+  "oncoprep.data",
   "oncoprep.interfaces",
   "oncoprep.io",
   "oncoprep.reports",
@@ -68,4 +70,7 @@ packages = [
   "oncoprep.workflows",
   "oncoprep.workflows.fit",
 ]
+
+[tool.setuptools.package-data]
+"oncoprep.data" = ["*.txt"]
 
