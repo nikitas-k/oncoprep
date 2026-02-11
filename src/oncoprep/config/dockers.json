@@ -163,5 +163,25 @@
         "user_mode": true,
         "root_issue": false,
         "flags": ""
+    },
+    "kaist-21":{
+        "name":"kaist-21",
+        "author":"Huan Minh Luu, Sung-Hong Park",
+        "email": "luu@kaist.ac.kr",
+        "citation": "https://link.springer.com/chapter/10.1007/978-3-031-09002-8_16",
+        "fileformat":"gz-b21",
+        "runtime":"nvidia",
+        "id":"rixez/brats21nnunet",
+        "command":"-i /data -o /data",
+        "mountpoint":"/data",
+        "user_mode": false,
+        "root_issue": false,
+        "flags": "--gpus device=0",
+        "year": 2021,
+        "rank": 1,
+        "task": "Adult Glioma",
+        "architecture": "Extended nnU-Net + Axial Attention ensemble",
+        "github": "https://github.com/rixez/Brats21_KAIST_MRI_Lab",
+        "notes": "BraTS 2021 1st place. Expects subfolder in input dir with BraTS naming convention."
     }
 }

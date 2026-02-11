@@ -43,5 +43,17 @@
         "id":"scan/brats2019",
         "command":"python DeepSCAN_BRATS_2019.py",
         "mountpoint":"/data"
+    },
+    "kaist-21":{
+        "name":"kaist-21",
+        "author":"Huan Minh Luu, Sung-Hong Park",
+        "fileformat":"gz-b21",
+        "runtime":"nvidia",
+        "id":"rixez/brats21nnunet",
+        "command":"-i /data -o /data",
+        "mountpoint":"/data",
+        "year": 2021,
+        "rank": 1,
+        "architecture": "Extended nnU-Net + Axial Attention ensemble"
     }
 }

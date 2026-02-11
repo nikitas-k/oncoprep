@@ -34,5 +34,11 @@
         "t1c":"pat_t1ce.nii.gz",
         "t2":"pat_t2.nii.gz",
         "fla":"pat_flair.nii.gz"
+    },
+    "gz-b21":{
+        "t1":"BraTS_00000_0000.nii.gz",
+        "t1c":"BraTS_00000_0001.nii.gz",
+        "t2":"BraTS_00000_0002.nii.gz",
+        "fla":"BraTS_00000_0003.nii.gz"
     }
 }

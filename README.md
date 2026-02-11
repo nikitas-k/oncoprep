@@ -40,6 +40,29 @@ oncoprep /path/to/bids /path/to/derivatives participant --participant-label sub-
 
 ## Segmentation
 
+OncoPrep supports multi-model ensemble tumor segmentation using containerized BraTS challenge models. The model list includes top-performing solutions from the BraTS challenge (2018-2024).
+
+### Supported Models
+
+| Key | Year | Rank | Task | Architecture | Authors | Docker Image |
+|-----|------|------|------|-------------|---------|--------------|
+| `econib` | 2018 | — | Adult Glioma | 3D U-Net | M. Marcinkiewicz | `econib/brats-2018` |
+| `mic-dkfz` | 2018 | **1st** | Adult Glioma | nnU-Net | F. Isensee | `fabianisensee/isen2018` |
+| `scan` | 2018 | — | Adult Glioma | DeepSCAN | R. McKinley | `mckinleyscan/brats:v1` |
+| `xfeng` | 2018 | — | Adult Glioma | 3D U-Net | X. Feng | `xf4j/brats18` |
+| `lfb_rwth` | 2018 | — | Adult Glioma | 3D U-Net | L. Weninger | `leonweninger/brats18_segmentation` |
+| `gbmnet` | 2018 | — | Adult Glioma | GBMNet | N. Nuechterlein | `nknuecht/gbmnet18` |
+| `zyx_2019` | 2019 | — | Adult Glioma | — | Y. Zhao | `jiaocha/zyxbrats` |
+| `scan_2019` | 2019 | — | Adult Glioma | DeepSCAN | R. McKinley | `scan/brats2019` |
+| `isen-20` | 2020 | **1st** | Adult Glioma | nnU-Net | F. Isensee (DKFZ) | `brats/isen-20` |
+| `hnfnetv1-20` | 2020 | 2nd | Adult Glioma | HNFNet | H. Jia | `brats/hnfnetv1-20` |
+| `yixinmpl-20` | 2020 | 2nd | Adult Glioma | — | Y. Wang | `brats/yixinmpl-20` |
+| `sanet0-20` | 2020 | 3rd | Adult Glioma | SANet | Y. Yuan | `brats/sanet0-20` |
+| `scan-20` | 2020 | — | Adult Glioma | DeepSCAN | R. McKinley | `brats/scan-20` |
+| `kaist-21` | 2021 | **1st** | Adult Glioma | Extended nnU-Net + Axial Attention | H.M. Luu, S.-H. Park | `rixez/brats21nnunet` |
+
+### Running segmentation
+
 Run preprocessing pipeline and segmentation (with ensemble consensus voting)
 
 ```bash
@@ -153,7 +176,7 @@ bash pull_seg_models.sh /scratch/$PROJECT/$USER/seg_cache --cpu-only
 singularity run --nv \
   --bind /scratch/$PROJECT/$USER/seg_cache:/seg_cache \
   oncoprep.sif \
-  /data/bids /data/output participant \
+  /data/bids /data/bids/derivatives participant \
   --participant-label sub-001 \
   --run-segmentation \
   --container-runtime singularity \
@@ -166,14 +189,14 @@ CPU-only (single model):
 singularity run \
   --bind /scratch/$PROJECT/$USER/seg_cache:/seg_cache \
   oncoprep.sif \
-  /data/bids /data/output participant \
+  /data/bids /data/bids/derivatives participant \
   --participant-label sub-001 \
   --run-segmentation --default-seg \
   --container-runtime singularity \
   --seg-cache-dir /seg_cache
 ```
 
-### PBS job script example (NCI Gadi)
+### PBS job script example
 
 ```bash
 #!/bin/bash
@@ -189,10 +212,10 @@ SEG_CACHE=/scratch/$PROJECT/$USER/seg_cache
 singularity run --nv \
   --bind $SEG_CACHE:/seg_cache \
   --bind /scratch/$PROJECT/$USER/bids:/data/bids:ro \
-  --bind /scratch/$PROJECT/$USER/output:/data/output \
+  --bind /scratch/$PROJECT/$USER/bids/derivatives:/data/bids/derivatives \
   --bind $PBS_JOBFS:/work \
   /scratch/$PROJECT/$USER/oncoprep.sif \
-  /data/bids /data/output participant \
+  /data/bids /data/bids/derivatives participant \
   --participant-label sub-001 \
   --run-segmentation \
   --container-runtime singularity \
@@ -206,7 +229,7 @@ If using Docker and you want to pre-cache models (e.g. for offline use):
 
 ```bash
 oncoprep-models pull -o /path/to/seg_cache --runtime docker
-oncoprep /data/bids /data/output participant \
+oncoprep /data/bids /data/bids/derivatives participant \
   --run-segmentation --seg-cache-dir /path/to/seg_cache
 ```
 
