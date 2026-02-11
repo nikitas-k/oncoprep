@@ -47,11 +47,17 @@ pull() {
 # GPU models
 if [[ "$FILTER" != "--cpu-only" ]]; then
     echo "=== GPU models ==="
-    pull mic-dkfz   fabianisensee/isen2018              gpu
-    pull scan        "mckinleyscan/brats:v2"             gpu
-    pull xfeng       xf4j/brats18                        gpu
-    pull zyx_2019    jiaocha/zyxbrats                     gpu
-    pull scan_2019   scan/brats2019                       gpu
+    pull mic-dkfz     fabianisensee/isen2018              gpu
+    pull scan         "mckinleyscan/brats:v2"             gpu
+    pull xfeng        xf4j/brats18                        gpu
+    pull zyx_2019     jiaocha/zyxbrats                     gpu
+    pull scan_2019    scan/brats2019                       gpu
+    pull isen-20      brats/isen-20                        gpu
+    pull hnfnetv1-20  brats/hnfnetv1-20                    gpu
+    pull yixinmpl-20  brats/yixinmpl-20                    gpu
+    pull sanet0-20    brats/sanet0-20                      gpu
+    pull scan-20      brats/scan-20                        gpu
+    pull kaist-21     rixez/brats21nnunet                   gpu
     echo ""
 fi
 
