@@ -21,36 +21,47 @@ class TestModalityInference:
 
     def test_t1_variants(self) -> None:
         """Test T1 modality detection."""
-        assert infer_modality_from_series('T1') == 'T1w'
-        assert infer_modality_from_series('T1_MPRAGE') == 'T1w'
-        assert infer_modality_from_series('T1W') == 'T1w'
-        assert infer_modality_from_series('T1_MPRAGE_SAG_P2_1_0_ISO_0032') == 'T1w'
+        assert infer_modality_from_series('T1')[0] == 'T1w'
+        assert infer_modality_from_series('T1_MPRAGE')[0] == 'T1w'
+        assert infer_modality_from_series('T1W')[0] == 'T1w'
+        assert infer_modality_from_series('T1_MPRAGE_SAG_P2_1_0_ISO_0032')[0] == 'T1w'
 
     def test_t1ce_variants(self) -> None:
         """Test T1 contrast-enhanced modality detection."""
-        assert infer_modality_from_series('T1CE') == 'T1ce'
-        assert infer_modality_from_series('T1_CE') == 'T1ce'
-        assert infer_modality_from_series('T1 CE') == 'T1ce'
-        assert infer_modality_from_series('T1_MPRAGE_POST') == 'T1w'  # POST usually not CE
-        assert infer_modality_from_series('T1CE_POST') == 'T1ce'
+        mod, ce, _agent = infer_modality_from_series('T1CE')
+        assert mod == 'T1w'
+        assert ce is True
+        mod, ce, _ = infer_modality_from_series('T1_CE')
+        assert mod == 'T1w'
+        assert ce is True
+        mod, ce, _ = infer_modality_from_series('T1 CE')
+        assert mod == 'T1w'
+        assert ce is True
+        # POST in a T1 series is treated as contrast-enhanced
+        mod, ce, _ = infer_modality_from_series('T1_MPRAGE_POST')
+        assert mod == 'T1w'
+        assert ce is True
+        mod, ce, _ = infer_modality_from_series('T1CE_POST')
+        assert mod == 'T1w'
+        assert ce is True
 
     def test_t2_variants(self) -> None:
         """Test T2 modality detection."""
-        assert infer_modality_from_series('T2') == 'T2w'
-        assert infer_modality_from_series('T2W') == 'T2w'
-        assert infer_modality_from_series('T2_SPC') == 'T2w'
-        assert infer_modality_from_series('T2_SPC_DA-FL_SAG_P2_1_0_0012') == 'T2w'
+        assert infer_modality_from_series('T2')[0] == 'T2w'
+        assert infer_modality_from_series('T2W')[0] == 'T2w'
+        assert infer_modality_from_series('T2_SPC')[0] == 'T2w'
+        assert infer_modality_from_series('T2_SPC_DA-FL_SAG_P2_1_0_0012')[0] == 'T2w'
 
     def test_flair(self) -> None:
         """Test FLAIR modality detection."""
-        assert infer_modality_from_series('FLAIR') == 'FLAIR'
-        assert infer_modality_from_series('COR_FLAIR') == 'FLAIR'
-        assert infer_modality_from_series('FLAIR_3D') == 'FLAIR'
+        assert infer_modality_from_series('FLAIR')[0] == 'FLAIR'
+        assert infer_modality_from_series('COR_FLAIR')[0] == 'FLAIR'
+        assert infer_modality_from_series('FLAIR_3D')[0] == 'FLAIR'
 
     def test_unknown_modality(self) -> None:
-        """Test unknown modality returns None."""
-        assert infer_modality_from_series('UNKNOWN_SEQUENCE') is None
-        assert infer_modality_from_series('LOCALIZER') is None
+        """Test unknown modality returns None as first element."""
+        assert infer_modality_from_series('UNKNOWN_SEQUENCE')[0] is None
+        assert infer_modality_from_series('LOCALIZER')[0] is None
 
 
 class TestBIDSDatasetDescription:
@@ -158,11 +169,18 @@ class TestConversionExampleData:
     def test_example_data_modality_inference(self) -> None:
         """Test modality inference on example DICOM series."""
         example_data = Path('examples/data')
-        
-        series_dirs = [d for d in example_data.iterdir() if d.is_dir() and not d.name.startswith('.')]
-        
+
+        # Series directories are nested under subject directories
+        series_dirs = [
+            d
+            for subj in example_data.iterdir()
+            if subj.is_dir() and not subj.name.startswith('.')
+            for d in subj.iterdir()
+            if d.is_dir()
+        ]
+
         # Should be able to infer modality for at least one series
-        modalities = [infer_modality_from_series(d.name) for d in series_dirs]
+        modalities = [infer_modality_from_series(d.name)[0] for d in series_dirs]
         assert any(m is not None for m in modalities), "Could not infer any modalities"
 
 

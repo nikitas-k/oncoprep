@@ -10,17 +10,18 @@
 *.userosscache
 *.sln.docstates
 *.env
-*examples
-*.vscode
-*.scripts
-*.instructions
-*.pytest_cache/
-*.venv
-*.build
+.vscode/
+.scripts/
+.instructions/
+.pytest_cache/
+.venv/
 *.egg-info/
-*work/
-*.DS_Store
-*dist
+work/
+.DS_Store
+dist/
+_build/
+_generated/
+examples/data/
 
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
@@ -456,10 +457,7 @@ SEGMENTATION_WORKFLOW_IMPLEMENTATION.md
 setup.py
 UNUSED_FUNCTIONS_ANALYSIS.md
 VALIDATION_REPORT.md
-.gitignore
-VENV_SETUP.md
 src/oncoprep/.DS_Store
-.dockerignore
-.gitignore
-pytest.ini
-.github/copilot-instructions.md
+*examples
+*nii.gz
+copilot-instructions.md

@@ -141,17 +141,27 @@ class HistogramNormalization(SimpleInterface):
         data = np.array(img.get_fdata(), dtype=np.float64)
 
         mask_img = nib.load(self.inputs.in_mask)
-        mask = np.asarray(mask_img.dataobj).astype(bool)
+        mask_data = np.asarray(mask_img.dataobj)
 
-        # Ensure shapes match; if mask is multi-label (seg), binarise
-        if mask.shape != data.shape:
-            # Resample not attempted — shapes must match from preprocessing
-            raise ValueError(
+        # Ensure shapes match
+        if mask_data.shape != data.shape:
+            raise RuntimeError(
                 f'Image shape {data.shape} does not match mask shape '
-                f'{mask.shape}. Ensure inputs are in the same space.'
+                f'{mask_data.shape}. Ensure inputs are in the same space.'
             )
-        if mask.max() > 1:
-            mask = mask > 0
+
+        # Binarise multi-label masks (e.g. segmentation) before bool cast
+        if mask_data.max() > 1:
+            mask = mask_data > 0
+        else:
+            mask = mask_data.astype(bool)
+
+        # Replace NaN/Inf with 0 to prevent propagation through statistics
+        nan_mask = ~np.isfinite(data)
+        if nan_mask.any():
+            data[nan_mask] = 0.0
+            # Also exclude non-finite voxels from the brain mask
+            mask = mask & ~nan_mask
 
         method = self.inputs.method
 
@@ -164,14 +174,32 @@ class HistogramNormalization(SimpleInterface):
 
         out_img = nib.Nifti1Image(data.astype(np.float32),
                                   img.affine, img.header)
-        out_path = os.path.abspath('normalized.nii.gz')
+
+        # Derive a unique output name from the input to avoid collisions
+        # in parallel (multimodal) workflows sharing a working directory.
+        in_name = Path(self.inputs.in_file).name
+        # Strip .nii.gz / .nii in one step so e.g. 'sub-01_T1w.nii.gz' → 'sub-01_T1w'
+        for ext in ('.nii.gz', '.nii'):
+            if in_name.endswith(ext):
+                in_stem = in_name[:-len(ext)]
+                break
+        else:
+            in_stem = Path(in_name).stem
+        out_path = os.path.join(runtime.cwd, f'{in_stem}_normalized.nii.gz')
         nib.save(out_img, out_path)
         self._results['out_file'] = out_path
 
         return runtime
 
     def _zscore_normalize(self, data, mask):
-        """Z-score normalization with Winsorization."""
+        """Z-score normalization with Winsorization.
+
+        Only brain-masked voxels contribute to μ and σ.  The
+        transformation is applied to masked voxels only; voxels outside
+        the mask retain their original intensities so that downstream
+        ROI extraction (e.g. tumor mask at brain boundary) is not
+        affected by artificial zeroing.
+        """
         import numpy as np
 
         brain_vals = data[mask]
@@ -189,12 +217,13 @@ class HistogramNormalization(SimpleInterface):
         if sigma < 1e-8:
             return data
 
-        # Normalize entire volume (not just brain)
-        normed = (data - mu) / sigma
-        normed = normed * self.inputs.target_std + self.inputs.target_mean
-
-        # Zero out non-brain voxels
-        normed[~mask] = 0.0
+        # Normalize in-mask voxels; leave non-brain intensities untouched
+        # so that tumour ROI voxels at the brain-mask boundary are not
+        # replaced with zeros.
+        normed = data.copy()
+        normed[mask] = (
+            (data[mask] - mu) / sigma
+        ) * self.inputs.target_std + self.inputs.target_mean
         return normed
 
     def _nyul_normalize(self, data, mask):
@@ -214,9 +243,22 @@ class HistogramNormalization(SimpleInterface):
         src_landmarks = np.percentile(brain_vals, landmarks_pct)
         tgt_landmarks = landmarks_pct.astype(np.float64)  # Map to [0, 100]
 
-        # Piecewise-linear mapping
-        normed = np.interp(data, src_landmarks, tgt_landmarks)
-        normed[~mask] = 0.0
+        # np.interp requires strictly increasing xp.  If brain values
+        # are constant (or nearly so), multiple landmarks collapse to
+        # the same value.  Deduplicate to keep only unique source values.
+        unique_mask = np.concatenate(
+            ([True], np.diff(src_landmarks) > 0)
+        )
+        src_landmarks = src_landmarks[unique_mask]
+        tgt_landmarks = tgt_landmarks[unique_mask]
+
+        if len(src_landmarks) < 2:
+            # All brain voxels have the same intensity — nothing to map
+            return data
+
+        # Apply piecewise-linear mapping only to masked voxels
+        normed = data.copy()
+        normed[mask] = np.interp(data[mask], src_landmarks, tgt_landmarks)
         return normed
 
     def _whitestripe_normalize(self, data, mask):
@@ -237,6 +279,10 @@ class HistogramNormalization(SimpleInterface):
         phigh = np.percentile(brain_vals, self.inputs.percentile_upper)
         clipped = brain_vals[(brain_vals >= plow) & (brain_vals <= phigh)]
 
+        if clipped.size < 2:
+            # Not enough data to estimate a mode
+            return data
+
         n_bins = min(256, max(64, int(np.sqrt(clipped.size))))
         hist, bin_edges = np.histogram(clipped, bins=n_bins)
 
@@ -252,8 +298,9 @@ class HistogramNormalization(SimpleInterface):
         if abs(mode_val) < 1e-8:
             return data
 
-        normed = data / mode_val
-        normed[~mask] = 0.0
+        # Normalize in-mask voxels only; preserve original outside the mask
+        normed = data.copy()
+        normed[mask] = data[mask] / mode_val
         return normed
 
 
