@@ -65,8 +65,8 @@ class _MRIQCInputSpec(CommandLineInputSpec):
         desc='Space-delimited list of session identifiers.',
     )
     modalities = traits.List(
-        traits.Enum('T1w', 'T2w', 'bold'),
-        argstr='--modalities %s',
+        traits.Enum('T1w', 'T2w', 'bold', 'dwi'),
+        argstr='-m %s',
         sep=' ',
         desc='Modalities to include (default: T1w T2w).',
     )
@@ -79,7 +79,7 @@ class _MRIQCInputSpec(CommandLineInputSpec):
         desc='Maximum number of threads per process.',
     )
     mem_gb = traits.Float(
-        argstr='--mem-gb %.2f',
+        argstr='--mem %.2f',
         desc='Upper bound memory limit (GB).',
     )
     work_dir = Directory(
@@ -97,10 +97,9 @@ class _MRIQCInputSpec(CommandLineInputSpec):
         desc='Generate verbose reports with extra details.',
     )
     float32 = traits.Bool(
-        True,
-        usedefault=True,
         argstr='--float32',
-        desc='Cast input data to float32 to reduce memory footprint.',
+        desc='Cast input data to float32 to reduce memory footprint '
+        '(may not be supported in all MRIQC versions).',
     )
     ica = traits.Bool(
         argstr='--ica',

@@ -381,7 +381,6 @@ def _run_mriqc_participant(
         'participant',
         '--participant-label', sub_id,
         '--no-sub',
-        '--float32',
         '-w', str(work_dir),
     ]
 
@@ -390,7 +389,7 @@ def _run_mriqc_participant(
         cmd.extend(['--session-id', ses_id])
 
     if modalities:
-        cmd.extend(['--modalities'] + list(modalities))
+        cmd.extend(['-m'] + list(modalities))
 
     if omp_nthreads and omp_nthreads > 0:
         cmd.extend(['--omp-nthreads', str(omp_nthreads)])
@@ -399,7 +398,7 @@ def _run_mriqc_participant(
         cmd.extend(['--nprocs', str(nprocs)])
 
     if mem_gb and mem_gb > 0:
-        cmd.extend(['--mem-gb', str(mem_gb)])
+        cmd.extend(['--mem', str(mem_gb)])
 
     try:
         subprocess.run(cmd, check=True, capture_output=True, text=True)
