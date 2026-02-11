@@ -29,8 +29,9 @@ from typing import List, Optional
 from nipype.interfaces import ants, utility as niu
 from nipype.interfaces.ants.base import Info as ANTsInfo
 from nipype.pipeline import engine as pe
-from niworkflows.engine import Workflow, tag
 from niworkflows.interfaces.norm import SpatialNormalization
+
+from oncoprep.workflows._compat import Workflow, tag
 from templateflow import __version__ as tf_ver
 from templateflow.api import get_metadata
 

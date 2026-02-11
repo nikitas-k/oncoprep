@@ -27,8 +27,9 @@ from typing import Dict, List, Optional
 
 from nipype.interfaces import utility as niu
 from nipype.pipeline import engine as pe
-from niworkflows.engine import Workflow, tag
 from niworkflows.interfaces.fixes import FixHeaderApplyTransforms as ApplyTransforms
+
+from oncoprep.workflows._compat import Workflow, tag
 from niworkflows.interfaces.nibabel import ApplyMask, GenerateSamplingReference
 from niworkflows.interfaces.space import SpaceDataSource
 from niworkflows.interfaces.utility import KeySelect

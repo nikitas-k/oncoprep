@@ -43,6 +43,7 @@ Outputs
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 from typing import List, Optional
 
@@ -140,6 +141,13 @@ def init_mriqc_wf(
     """
     if modalities is None:
         modalities = ['T1w', 'T2w']
+
+    if shutil.which('mriqc') is None:
+        raise FileNotFoundError(
+            'MRIQC executable not found on PATH. '
+            'Install with: pip install mriqc  '
+            '(or omit --run-qc to skip quality control)'
+        )
 
     mriqc_output_dir = Path(output_dir) / 'mriqc'
     mriqc_work_dir = Path(work_dir) if work_dir else Path(output_dir) / 'mriqc_work'
@@ -403,11 +411,10 @@ def _run_mriqc_participant(
             RuntimeWarning,
         )
     except FileNotFoundError:
-        import warnings
-        warnings.warn(
-            'MRIQC is not installed or not found in PATH. '
-            'Install with: pip install mriqc',
-            RuntimeWarning,
+        raise FileNotFoundError(
+            'MRIQC executable not found on PATH. '
+            'Install with: pip install mriqc  '
+            '(or omit --run-qc to skip quality control)'
         )
 
     # Locate outputs

@@ -48,7 +48,7 @@ from niworkflows.interfaces.freesurfer import (
     StructuralReference,
 )
 
-from niworkflows.engine import Workflow, tag
+from oncoprep.workflows._compat import Workflow, tag
 from niworkflows.anat.ants import init_brain_extraction_wf, init_n4_only_wf
 from niworkflows.utils.spaces import Reference, SpatialReferences
 from niworkflows.utils.misc import add_suffix

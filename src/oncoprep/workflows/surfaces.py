@@ -34,8 +34,9 @@ from nipype.interfaces import freesurfer as fs
 from nipype.interfaces import io as nio
 from nipype.interfaces import utility as niu
 from nipype.pipeline import engine as pe
-from niworkflows.engine import Workflow, tag
 from niworkflows.interfaces.patches import FreeSurferSource
+
+from oncoprep.workflows._compat import Workflow, tag
 
 if ty.TYPE_CHECKING:
     pass
