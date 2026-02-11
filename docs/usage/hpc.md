@@ -71,15 +71,22 @@ from pre-extracted SIF files.
 
 ### Step 1: Pull and extract models (on login node)
 
+**IMPORTANT:** This step must be done on the HPC **login node** (not inside
+a container) where the `singularity` or `apptainer` command is available.
+
 ```bash
+# Load singularity module (if needed)
+module load singularity  # or: module load apptainer
+
 # Pull models as SIF files
 oncoprep-models pull -o /scratch/$PROJECT/$USER/seg_cache
 
 # Extract SIF files for direct execution
+# This uses 'singularity build --sandbox' to extract the container filesystem
 oncoprep-models extract --cache-dir /scratch/$PROJECT/$USER/seg_cache
 ```
 
-### Step 2: Run with direct runtime
+### Step 2: Run with direct runtime (in job script)
 
 ```bash
 singularity run --nv \
@@ -93,10 +100,10 @@ singularity run --nv \
 ```
 
 The `direct` runtime:
-- Extracts model code from cached SIF files (if not already extracted)
-- Runs model scripts directly without container invocation
+- Runs model scripts directly from pre-extracted SIF filesystems
 - Works when neither Docker nor nested Singularity is available
 - Auto-detects when running inside a Singularity container
+- Requires models to be pre-extracted on the login node
 
 ## PBS job script example
 

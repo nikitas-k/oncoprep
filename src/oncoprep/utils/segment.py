@@ -318,10 +318,15 @@ def _extract_sif_to_dir(
     output_dir: Path,
     force: bool = False,
 ) -> bool:
-    """Extract a Singularity SIF file to a directory using unsquashfs.
+    """Extract a Singularity SIF file to a directory.
 
-    SIF files contain a SquashFS filesystem that can be extracted for
-    direct execution without container runtime.
+    Tries multiple extraction methods in order:
+    1. singularity build --sandbox (preferred, available on HPC login nodes)
+    2. apptainer build --sandbox
+    3. unsquashfs (requires squashfs-tools system package)
+
+    IMPORTANT: This should be run on an HPC login node where singularity
+    is available, NOT inside a container.
 
     Parameters
     ----------
@@ -342,7 +347,37 @@ def _extract_sif_to_dir(
         LOGGER.debug("Model already extracted at %s", output_dir)
         return True
 
-    # Check for unsquashfs
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Method 1: Try singularity/apptainer build --sandbox
+    # This is the preferred method on HPC login nodes
+    sing_cmd = _find_singularity_cmd()
+    if sing_cmd:
+        LOGGER.info("Extracting SIF using '%s build --sandbox' to %s ...", sing_cmd, rootfs)
+        try:
+            # Remove existing rootfs if force
+            if rootfs.exists() and force:
+                import shutil
+                shutil.rmtree(str(rootfs))
+
+            result = subprocess.run(
+                [sing_cmd, "build", "--sandbox", str(rootfs), str(sif_path)],
+                capture_output=True,
+                check=True,
+                timeout=600,  # 10 minute timeout
+            )
+            LOGGER.info("Successfully extracted SIF to %s", rootfs)
+            return True
+        except subprocess.CalledProcessError as e:
+            LOGGER.warning(
+                "singularity/apptainer build --sandbox failed: %s. "
+                "Trying alternative methods...",
+                e.stderr.decode() if e.stderr else str(e)
+            )
+        except subprocess.TimeoutExpired:
+            LOGGER.warning("singularity build --sandbox timed out. Trying alternatives...")
+
+    # Method 2: Try unsquashfs (requires squashfs-tools)
     try:
         result = subprocess.run(
             ["unsquashfs", "-version"],
@@ -350,64 +385,67 @@ def _extract_sif_to_dir(
             check=False,
             timeout=5,
         )
-        if result.returncode != 0:
-            LOGGER.error("unsquashfs not found or not working")
-            return False
+        has_unsquashfs = result.returncode == 0
     except (FileNotFoundError, subprocess.TimeoutExpired):
-        LOGGER.error(
-            "unsquashfs not available. Install squashfs-tools to extract "
-            "SIF files for direct execution."
-        )
-        return False
+        has_unsquashfs = False
 
-    # SIF files contain the SquashFS image at a specific offset.
-    # We can extract it using unsquashfs with the -offset option,
-    # or use singularity sif to list partitions.
-    # Simpler approach: use the sif tool or find the squashfs offset.
+    if has_unsquashfs:
+        LOGGER.info("Extracting SIF using unsquashfs to %s ...", rootfs)
 
-    output_dir.mkdir(parents=True, exist_ok=True)
+        # Find SquashFS offset in SIF file
+        try:
+            with open(sif_path, 'rb') as f:
+                content = f.read()
+                offset = content.find(b'hsqs')
+                if offset == -1:
+                    LOGGER.error("Could not find SquashFS partition in SIF file")
+                    return False
+                LOGGER.debug("Found SquashFS at offset %d in %s", offset, sif_path)
+        except Exception as e:
+            LOGGER.error("Failed to read SIF file: %s", e)
+            return False
 
-    # Try to find the SquashFS offset in the SIF file
-    # SIF files have a header followed by data descriptors, then the squashfs
-    # The squashfs magic is "hsqs" at the start of the partition
-    try:
-        with open(sif_path, 'rb') as f:
-            content = f.read()
-            # Look for squashfs magic "hsqs"
-            offset = content.find(b'hsqs')
-            if offset == -1:
-                LOGGER.error("Could not find SquashFS partition in SIF file")
-                return False
-            LOGGER.debug("Found SquashFS at offset %d in %s", offset, sif_path)
-    except Exception as e:
-        LOGGER.error("Failed to read SIF file: %s", e)
-        return False
+        # Extract SquashFS to rootfs/
+        cmd = [
+            "unsquashfs",
+            "-f",  # Force overwrite
+            "-d", str(rootfs),
+            "-o", str(offset),
+            str(sif_path),
+        ]
 
-    # Extract SquashFS to rootfs/
-    cmd = [
-        "unsquashfs",
-        "-f",  # Force overwrite
-        "-d", str(rootfs),  # Destination directory
-        "-o", str(offset),  # Offset to SquashFS data
-        str(sif_path),
-    ]
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                check=True,
+                timeout=300,
+            )
+            LOGGER.info("Successfully extracted SIF to %s", rootfs)
+            return True
+        except subprocess.CalledProcessError as e:
+            LOGGER.error("unsquashfs failed: %s", e.stderr.decode())
+            return False
+        except subprocess.TimeoutExpired:
+            LOGGER.error("unsquashfs timed out")
+            return False
 
-    LOGGER.info("Extracting SIF to %s ...", rootfs)
-    try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            check=True,
-            timeout=300,  # 5 minute timeout
-        )
-        LOGGER.info("Successfully extracted SIF to %s", rootfs)
-        return True
-    except subprocess.CalledProcessError as e:
-        LOGGER.error("Failed to extract SIF: %s", e.stderr.decode())
-        return False
-    except subprocess.TimeoutExpired:
-        LOGGER.error("SIF extraction timed out")
-        return False
+    # No extraction method available
+    LOGGER.error(
+        "Cannot extract SIF file: no extraction tool available.\n\n"
+        "This command must be run on an HPC LOGIN NODE (not inside a container)\n"
+        "where singularity/apptainer is available. Typical workflow:\n\n"
+        "  # On login node:\n"
+        "  module load singularity\n"
+        "  oncoprep-models pull -o /scratch/$USER/seg_cache\n"
+        "  oncoprep-models extract --cache-dir /scratch/$USER/seg_cache\n\n"
+        "  # Then submit job with:\n"
+        "  singularity run --nv oncoprep.sif ... --container-runtime direct\n\n"
+        "If you are on a login node, try:\n"
+        "  module load singularity   # or: module load apptainer\n"
+        "  module load squashfs-tools  # alternative if singularity unavailable"
+    )
+    return False
 
 
 def _ensure_model_extracted(

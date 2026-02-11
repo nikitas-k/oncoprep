@@ -411,11 +411,13 @@ if torch.cuda.is_available():
        best option when running inside the OncoPrep Singularity container
        on HPC where neither Docker nor nested Singularity is available.
 
-       On a login node with singularity:
+       IMPORTANT: Run these commands on the LOGIN NODE (not inside a container):
+
+         module load singularity  # or: module load apptainer
          oncoprep-models pull --output-dir /scratch/$USER/seg_cache
          oncoprep-models extract --cache-dir /scratch/$USER/seg_cache
 
-       Then run with:
+       Then submit your job with:
          singularity run --nv oncoprep.sif /data/bids /data/output participant \
              --run-segmentation \
              --container-runtime direct \

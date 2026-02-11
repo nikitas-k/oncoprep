@@ -414,6 +414,9 @@ def _cmd_extract(args: argparse.Namespace) -> int:
     This is useful when running inside a Singularity container on HPC
     where nested container invocation is not supported. By pre-extracting
     the models, they can be run directly without needing singularity/docker.
+
+    IMPORTANT: This command should be run on an HPC LOGIN NODE where
+    singularity/apptainer is available, NOT inside a container.
     """
     gpu = not args.cpu_only
     cpu = not args.gpu_only
@@ -429,13 +432,28 @@ def _cmd_extract(args: argparse.Namespace) -> int:
 
     # Import extraction function
     try:
-        from oncoprep.utils.segment import _extract_sif_to_dir, _extracted_model_dir
+        from oncoprep.utils.segment import (
+            _extract_sif_to_dir,
+            _extracted_model_dir,
+            _is_inside_singularity,
+            _find_singularity_cmd,
+        )
     except ImportError:
         print("ERROR: Could not import extraction functions from oncoprep.utils.segment")
         return 1
 
-    # Check for unsquashfs
+    # Warn if running inside a container
+    if _is_inside_singularity():
+        print(
+            "WARNING: You appear to be running inside a Singularity/Apptainer container.\n"
+            "         Model extraction should be done on the HOST/LOGIN NODE where\n"
+            "         singularity/apptainer is available.\n"
+        )
+
+    # Check for extraction tools
     import subprocess
+    sing_cmd = _find_singularity_cmd()
+    has_unsquashfs = False
     try:
         result = subprocess.run(
             ["unsquashfs", "-version"],
@@ -443,15 +461,24 @@ def _cmd_extract(args: argparse.Namespace) -> int:
             check=False,
             timeout=5,
         )
-        if result.returncode != 0:
-            print("ERROR: unsquashfs not found. Install squashfs-tools.")
-            return 1
+        has_unsquashfs = result.returncode == 0
     except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+
+    if not sing_cmd and not has_unsquashfs:
         print(
-            "ERROR: unsquashfs not available. "
-            "Install squashfs-tools (e.g., apt install squashfs-tools)."
+            "ERROR: No extraction tool available.\n\n"
+            "This command must be run on an HPC LOGIN NODE where singularity/apptainer\n"
+            "is available. Try:\n\n"
+            "  module load singularity   # or: module load apptainer\n"
+            "  oncoprep-models extract --cache-dir /scratch/$USER/seg_cache\n\n"
+            "Alternatively, if you have squashfs-tools installed:\n"
+            "  module load squashfs-tools\n"
         )
         return 1
+
+    extraction_method = sing_cmd if sing_cmd else "unsquashfs"
+    print(f"Using extraction method: {extraction_method}\n")
 
     total = len(models)
     success = 0
