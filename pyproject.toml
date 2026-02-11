@@ -31,7 +31,6 @@ dependencies = [
   "templateflow",
   "dcm2niix",
   "picsl-greedy",
-  "antspyx",
   "torch",
   "torchvision",
   "torchaudio"
