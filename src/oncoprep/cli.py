@@ -30,6 +30,22 @@ def main():
     if '--fetch-templates' in sys.argv:
         return _handle_fetch_templates()
 
+    # Handle --offline early to disable TemplateFlow network access
+    # MUST be set before any templateflow imports
+    if '--offline' in sys.argv:
+        os.environ['TEMPLATEFLOW_AUTOUPDATE'] = 'false'
+
+    # Handle --templateflow-home early to set cache location before imports
+    for i, arg in enumerate(sys.argv):
+        if arg == '--templateflow-home' and i + 1 < len(sys.argv):
+            tf_home = Path(sys.argv[i + 1]).resolve()
+            os.environ['TEMPLATEFLOW_HOME'] = str(tf_home)
+            break
+        elif arg.startswith('--templateflow-home='):
+            tf_home = Path(arg.split('=', 1)[1]).resolve()
+            os.environ['TEMPLATEFLOW_HOME'] = str(tf_home)
+            break
+
     opts = get_parser().parse_args()
     return build_opts(opts)
 

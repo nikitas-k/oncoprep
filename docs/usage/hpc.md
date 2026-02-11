@@ -42,25 +42,29 @@ must be pre-cached on a login node before submitting jobs.
 **On the login node (with internet access):**
 
 ```bash
-# Fetch templates to a shared cache directory
+# Fetch default templates (MNI152NLin2009cAsym + OASIS30ANTs for skull-stripping)
 oncoprep --fetch-templates \
   --templateflow-home /scratch/$PROJECT/$USER/templateflow
 
-# Or with custom output spaces
+# Note: This fetches templates for default --output-spaces and --skull-strip-template.
+# For custom spaces, specify them explicitly:
 oncoprep --fetch-templates \
   --templateflow-home /scratch/$PROJECT/$USER/templateflow \
-  --output-spaces MNI152NLin2009cAsym MNIPediatricAsym \
+  --output-spaces MNI152NLin2009cAsym \
   --skull-strip-template OASIS30ANTs
 ```
 
-**When running on compute nodes**, always set `--templateflow-home` and use
-`--offline` to prevent network access attempts:
+**When running on compute nodes**, use `--offline` to disable all network access:
 
 ```bash
 oncoprep /data/bids /data/output participant \
   --templateflow-home /scratch/$PROJECT/$USER/templateflow \
   --offline
 ```
+
+The `--offline` flag sets `TEMPLATEFLOW_AUTOUPDATE=false` before any imports,
+preventing TemplateFlow from attempting downloads even when called from
+workflow nodes.
 
 ## 4. Run on a compute node
 

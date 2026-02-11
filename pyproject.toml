@@ -78,7 +78,10 @@ oncoprep-batch = "oncoprep.dicom_cli:main"
 package-dir = {"" = "src"}
 packages = [
   "oncoprep",
+  "oncoprep.bids",
+  "oncoprep.config",
   "oncoprep.data",
+  "oncoprep.dicom",
   "oncoprep.interfaces",
   "oncoprep.io",
   "oncoprep.reports",
@@ -88,5 +91,7 @@ packages = [
 ]
 
 [tool.setuptools.package-data]
+"oncoprep.config" = ["*.json"]
 "oncoprep.data" = ["*.txt"]
+"oncoprep.reports" = ["*.j2", "*.css", "*.html"]
 
