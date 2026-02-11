@@ -50,6 +50,12 @@ except ImportError:
     pass
 
 try:
+    from .radiomics import PyRadiomicsFeatureExtraction
+    __all__.append('PyRadiomicsFeatureExtraction')
+except ImportError:
+    pass
+
+try:
     from .surf import NormalizeSurf, FixGiftiMetadata, AggregateSurfaces, MakeRibbon
     __all__.extend(['NormalizeSurf', 'FixGiftiMetadata', 'AggregateSurfaces', 'MakeRibbon'])
 except ImportError:

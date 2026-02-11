@@ -51,6 +51,7 @@ def collate_subject_report(output_dir, subject_id, version,
     # ---- collect reportlets ----
     summary_html = about_html = conform_html = ''
     dseg_svg_name = tumor_svg_name = ''
+    radiomics_html = ''
     norm_figures = []  # [(caption, filename), ...]
 
     if figures_dir.is_dir():
@@ -64,6 +65,8 @@ def collate_subject_report(output_dir, subject_id, version,
                 conform_html = _read(fpath)
             elif fname.endswith('_desc-tumor_dseg.svg'):
                 tumor_svg_name = fname
+            elif fname.endswith('_desc-radiomics_features.html'):
+                radiomics_html = _read(fpath)
             elif fname.endswith('_dseg.svg') and 'tumor' not in fname:
                 dseg_svg_name = fname
             elif fname.endswith('.svg') and 'space-' in fname:
@@ -180,6 +183,47 @@ def collate_subject_report(output_dir, subject_id, version,
         )
         sections.append(sec)
 
+    # -- Radiomics Features --
+    if radiomics_html:
+        sec = '    <div id="Radiomics">\n'
+        sec += '    <h1 class="sub-report-title">Radiomics</h1>\n'
+        sec += (
+            '        <div id="datatype-figures_desc-radiomics_suffix-features">\n'
+            '<h3 class="run-title">Tumor Radiomics Feature Extraction</h3>'
+            '<p class="elem-caption">Quantitative radiomics features extracted '
+            'from the preprocessed T1-weighted image using PyRadiomics. '
+            'Features include shape-based, first-order intensity, and texture '
+            '(GLCM, GLRLM, GLSZM, GLDM, NGTDM) descriptors computed for '
+            'each tumor sub-region and composite regions (whole tumor, '
+            'tumor core).</p>\n'
+            '<style>\n'
+            '.radiomics-report { font-size: 0.9em; }\n'
+            '.radiomics-summary { width: 100%; border-collapse: collapse; '
+            'margin: 10px 0 20px; }\n'
+            '.radiomics-summary th, .radiomics-summary td { '
+            'padding: 6px 12px; border: 1px solid #dee2e6; text-align: right; }\n'
+            '.radiomics-summary th { background: #f8f9fa; text-align: center; '
+            'font-weight: 600; }\n'
+            '.radiomics-summary td:first-child { text-align: left; }\n'
+            '.radiomics-region { margin: 8px 0; }\n'
+            '.radiomics-region summary { cursor: pointer; padding: 6px; '
+            'background: #f1f3f5; border-radius: 4px; }\n'
+            '.radiomics-detail { width: 100%; border-collapse: collapse; '
+            'margin: 8px 0; }\n'
+            '.radiomics-detail caption { text-align: left; font-weight: 600; '
+            'padding: 4px 0; font-size: 0.95em; }\n'
+            '.radiomics-detail th, .radiomics-detail td { '
+            'padding: 4px 10px; border: 1px solid #dee2e6; }\n'
+            '.radiomics-detail th { background: #f8f9fa; text-align: left; }\n'
+            '.radiomics-detail td:last-child { text-align: right; '
+            'font-family: monospace; }\n'
+            '</style>\n'
+            '                    ' + radiomics_html.strip() + '\n'
+            '</div>\n'
+            '    </div>\n'
+        )
+        sections.append(sec)
+
     # -- About --
     sec = '    <div id="About">\n'
     sec += '    <h1 class="sub-report-title">About</h1>\n'
@@ -229,6 +273,12 @@ def collate_subject_report(output_dir, subject_id, version,
             '        <li class="nav-item">'
             '<a class="nav-link" href="#Segmentation">'
             'Tumor Segmentation</a></li>\n'
+        )
+    if radiomics_html:
+        nav_items += (
+            '        <li class="nav-item">'
+            '<a class="nav-link" href="#Radiomics">'
+            'Radiomics</a></li>\n'
         )
     nav_items += (
         '        <li class="nav-item">'

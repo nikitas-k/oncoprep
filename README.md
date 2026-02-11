@@ -76,6 +76,159 @@ oncoprep /path/to/bids /path/to/derivatives participant --participant-label sub-
 oncoprep /path/to/bids /path/to/derivatives participant --participant-label sub-001 --run-segmentation --seg-model-path /path/to/model
 ```
 
+## Radiomics
+
+OncoPrep includes a radiomics feature extraction pipeline built on [PyRadiomics](https://pyradiomics.readthedocs.io/), integrated as a Nipype workflow (`init_anat_radiomics_wf`). It computes quantitative imaging features from preprocessed anatomical images using the tumor segmentation masks produced by the segmentation step.
+
+### Install
+
+PyRadiomics is an optional dependency:
+
+```bash
+pip install "oncoprep[radiomics]"
+```
+
+### Running radiomics
+
+The `--run-radiomics` flag enables feature extraction after segmentation. It implies `--run-segmentation`, so you don't need to pass both:
+
+```bash
+# Run preprocessing + segmentation + radiomics (default single model, CPU)
+oncoprep /path/to/bids /path/to/derivatives participant \
+  --participant-label sub-001 --run-radiomics --default-seg
+
+# Run with GPU ensemble segmentation + radiomics
+oncoprep /path/to/bids /path/to/derivatives participant \
+  --participant-label sub-001 --run-radiomics
+```
+
+### What gets extracted
+
+Features are computed for each **tumor sub-region** and **composite region**:
+
+| Region | Label | Description |
+|--------|-------|-------------|
+| NCR | 1 | Necrotic Core |
+| ED | 2 | Peritumoral Edema |
+| ET | 3 | Enhancing Tumor |
+| RC | 4 | Resection Cavity |
+| WT | 1+2+3+4 | Whole Tumor (composite) |
+| TC | 1+3+4 | Tumor Core (composite) |
+
+For each region, the following feature classes are extracted (all enabled by default):
+
+| Feature Class | Description | Example Features |
+|---------------|-------------|------------------|
+| **Shape** | 3D morphological descriptors | Volume, Surface Area, Sphericity, Elongation, Flatness |
+| **First Order** | Intensity histogram statistics | Mean, Median, Std Dev, Skewness, Kurtosis, Entropy, Energy |
+| **GLCM** | Gray-Level Co-occurrence Matrix | Contrast, Correlation, Homogeneity, Entropy, Cluster Shade |
+| **GLRLM** | Gray-Level Run Length Matrix | Short/Long Run Emphasis, Gray Level Non-Uniformity |
+| **GLSZM** | Gray-Level Size Zone Matrix | Small/Large Area Emphasis, Zone Entropy |
+| **GLDM** | Gray-Level Dependence Matrix | Dependence Entropy, Non-Uniformity |
+| **NGTDM** | Neighbouring Gray Tone Difference Matrix | Coarseness, Contrast, Busyness, Complexity |
+
+### Configuration
+
+The radiomics extraction can be configured through the Python API by passing parameters to the workflow or interface directly.
+
+#### Feature class selection
+
+Toggle individual feature classes when building the workflow:
+
+```python
+from oncoprep.workflows.radiomics import init_anat_radiomics_wf
+
+wf = init_anat_radiomics_wf(
+    output_dir='/path/to/derivatives',
+    extract_shape=True,       # 3D shape features
+    extract_firstorder=True,  # intensity statistics
+    extract_glcm=True,        # co-occurrence matrix
+    extract_glrlm=False,      # run length matrix (disabled)
+    extract_glszm=False,      # size zone matrix (disabled)
+    extract_gldm=False,       # dependence matrix (disabled)
+    extract_ngtdm=False,      # grey tone difference (disabled)
+)
+```
+
+#### Custom PyRadiomics settings
+
+Pass a settings dict to the `PyRadiomicsFeatureExtraction` interface for fine-grained control over PyRadiomics internals (bin width, resampling, image filters, etc.):
+
+```python
+from oncoprep.interfaces.radiomics import PyRadiomicsFeatureExtraction
+
+extract = PyRadiomicsFeatureExtraction(
+    settings={
+        'binWidth': 25,
+        'resampledPixelSpacing': [1, 1, 1],
+        'interpolator': 'sitkBSpline',
+        'normalizeScale': 1,
+        'normalize': True,
+    },
+)
+```
+
+See the [PyRadiomics documentation](https://pyradiomics.readthedocs.io/en/latest/customization.html) for all available settings.
+
+#### Custom label definitions
+
+Override the default BraTS label map for non-standard segmentation masks:
+
+```python
+from oncoprep.interfaces.radiomics import PyRadiomicsFeatureExtraction
+
+extract = PyRadiomicsFeatureExtraction(
+    label_map={1: 'tumor', 2: 'edema'},
+    label_names={1: 'Tumor', 2: 'Edema'},
+    composites={
+        'ALL': {'name': 'All Abnormal', 'labels': [1, 2]},
+    },
+)
+```
+
+#### Multi-modal extraction
+
+Extract features across all four MRI modalities (T1w, T1ce, T2w, FLAIR) using the same segmentation mask:
+
+```python
+from oncoprep.workflows.radiomics import init_multimodal_radiomics_wf
+
+wf = init_multimodal_radiomics_wf(
+    output_dir='/path/to/derivatives',
+    modalities=['t1w', 't1ce', 't2w', 'flair'],
+)
+```
+
+### Outputs
+
+Radiomics produces two BIDS derivative outputs per subject:
+
+| File | Description |
+|------|-------------|
+| `sub-XXX_desc-radiomics_features.json` | Full feature set as structured JSON, keyed by region then feature class |
+| `sub-XXX.html` (Radiomics section) | Summary and detailed feature tables embedded in the subject HTML report |
+
+The JSON output structure:
+
+```json
+{
+  "NCR": {
+    "label": 1,
+    "name": "Necrotic Core (NCR)",
+    "features": {
+      "shape": { "MeshVolume": 1234.5, "Sphericity": 0.82, ... },
+      "firstorder": { "Mean": 45.2, "Entropy": 3.1, ... },
+      "glcm": { "Contrast": 12.3, ... }
+    }
+  },
+  "WT": {
+    "label": [1, 2, 3, 4],
+    "name": "Whole Tumor (WT)",
+    "features": { ... }
+  }
+}
+```
+
 ## Docker
 
 OncoPrep is available as a Docker image with all neuroimaging dependencies (ANTs, FSL, dcm2niix) pre-installed.

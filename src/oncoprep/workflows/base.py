@@ -65,6 +65,7 @@ ONCOPREP_BIDS_QUERIES['t1w'] = {
 from oncoprep import __version__
 from oncoprep.workflows.segment import init_anat_seg_wf
 from oncoprep.workflows.brats_outputs import init_ds_tumor_seg_wf
+from oncoprep.workflows.radiomics import init_anat_radiomics_wf
 from ..interfaces import DerivativesDataSink, OncoprepBIDSDataGrabber
 from ..interfaces.reports import SubjectSummary, AboutSummary
 from .anatomical import init_anat_preproc_wf
@@ -93,6 +94,7 @@ def init_oncoprep_wf(
     use_gpu: bool = True,
     deface: bool = False,
     run_segmentation: bool = False,
+    run_radiomics: bool = False,
     seg_model_path: Optional[Path] = None,
     default_seg: bool = False,
     sloppy: bool = False,
@@ -204,6 +206,7 @@ to workflows in *OncoPrep*'s documentation]\
             use_gpu=use_gpu,
             deface=deface,
             run_segmentation=run_segmentation,
+            run_radiomics=run_radiomics,
             seg_model_path=seg_model_path,
             default_seg=default_seg,
             sloppy=sloppy,
@@ -245,6 +248,7 @@ def init_single_subject_wf(
     use_gpu: bool = True,
     deface: bool = False,
     run_segmentation: bool = False,
+    run_radiomics: bool = False,
     seg_model_path: Optional[Path] = None,
     default_seg: bool = False,
     sloppy: bool = False,
@@ -556,12 +560,37 @@ to workflows in *OncoPrep*'s documentation]\
             (tumor_rpt, ds_tumor_dseg_report, [('out_report', 'in_file')]),
         ])
 
+
+    # Radiomics feature extraction workflow (optional, requires segmentation)
+    if run_radiomics and run_segmentation:
+        LOGGER.info('Initializing radiomics feature extraction workflow')
+        anat_radiomics_wf = init_anat_radiomics_wf(
+            output_dir=str(output_dir),
+            name='anat_radiomics_wf',
+        )
+
+        workflow.connect([
+            (bidssrc, anat_radiomics_wf, [
+                (('t1w', fix_multi_T1w_source_name), 'inputnode.source_file'),
+            ]),
+            (anat_preproc_wf, anat_radiomics_wf, [
+                ('outputnode.t1w_preproc', 'inputnode.t1w_preproc'),
+            ]),
+            (anat_seg_wf, anat_radiomics_wf, [
+                ('outputnode.tumor_seg_old', 'inputnode.tumor_seg'),
+            ]),
+        ])
+
     # ---- Collate all figures into a single sub-<label>.html report ----
     from ..utils.collate import collate_subject_report as _collate_fn
 
     # Merge sentinel signals from every report-writing datasink so the
     # collation node runs only after ALL figures have been written.
-    n_sentinels = 4 if run_segmentation else 3
+    n_sentinels = 3
+    if run_segmentation:
+        n_sentinels += 1  # tumor dseg report
+    if run_radiomics and run_segmentation:
+        n_sentinels += 1  # radiomics report
     report_sentinel_merge = pe.Node(
         niu.Merge(n_sentinels, no_flatten=True),
         name='report_sentinel_merge',
@@ -593,6 +622,13 @@ to workflows in *OncoPrep*'s documentation]\
     if run_segmentation:
         workflow.connect([
             (ds_tumor_dseg_report, report_sentinel_merge, [('out_file', 'in4')]),
+        ])
+
+    if run_radiomics and run_segmentation:
+        workflow.connect([
+            (anat_radiomics_wf, report_sentinel_merge, [
+                ('ds_radiomics_report.out_file', f'in{n_sentinels}'),
+            ]),
         ])
 
     workflow.connect([

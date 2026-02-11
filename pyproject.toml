@@ -41,6 +41,9 @@ dependencies = [
 hd-bet = [
     "hd-bet",
 ]
+radiomics = [
+    "pyradiomics==3.0.1",
+]
 # torch = [
 #     "torch",
 #     "torchvision",

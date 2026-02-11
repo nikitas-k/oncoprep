@@ -136,8 +136,14 @@ COPY src/ ./src/
 # Upgrade pip first (base image ships old pip that may fail to find wheels)
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 
-# Install OncoPrep and all core dependencies
-RUN pip install --no-cache-dir -e ".[dev]"
+# Pre-install numpy (required as build dependency for pyradiomics C extensions)
+RUN pip install --no-cache-dir "numpy<2"
+
+# Install pyradiomics from source (needs numpy in build env, skip PEP 517 isolation)
+RUN pip install --no-cache-dir --no-build-isolation "pyradiomics==3.0.1"
+
+# Install OncoPrep and all core dependencies (including radiomics)
+RUN pip install --no-cache-dir -e ".[dev,radiomics]"
 
 # Pre-fetch ALL TemplateFlow templates used by OncoPrep
 # (ensures offline operation on HPC / air-gapped systems)

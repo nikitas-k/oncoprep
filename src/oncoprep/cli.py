@@ -182,6 +182,12 @@ def get_parser():
         action='store_true',
         help='run tumor segmentation step (requires Docker with GPU support)',
     )
+    g_conf.add_argument(
+        '--run-radiomics',
+        action='store_true',
+        help='run radiomics feature extraction on tumor segmentations '
+        '(requires pyradiomics; implies --run-segmentation)',
+    )
     
     # ANTs options
     g_ants = parser.add_argument_group('Specific options for ANTs registrations')
@@ -578,7 +584,8 @@ def build_workflow(opts, retval):
         output_spaces=opts.output_spaces,
         use_gpu=not opts.no_gpu,
         deface=opts.deface,
-        run_segmentation=opts.run_segmentation,
+        run_segmentation=opts.run_segmentation or opts.run_radiomics,
+        run_radiomics=opts.run_radiomics,
         seg_model_path=opts.seg_model_path,
         default_seg=opts.default_seg,
         sloppy=opts.sloppy,
