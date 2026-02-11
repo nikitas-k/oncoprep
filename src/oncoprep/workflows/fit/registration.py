@@ -325,7 +325,7 @@ and accessed with *TemplateFlow* [{tf_ver}]:
     set_reference = pe.Node(
         niu.Function(
             function=_set_reference,
-            output_names=['reference_type', 'use_histogram_matching'],
+            output_names=['reference_type'],
         ),
         name='set_reference',
     )
@@ -371,7 +371,6 @@ and accessed with *TemplateFlow* [{tf_ver}]:
         ]),
         (set_reference, register_T1w, [
             ('reference_type', 'reference'),
-            ('use_histogram_matching', 'use_histogram_matching'),
         ]),
         (split_desc, register_T1w, [
             ('name', 'template'),
@@ -710,15 +709,12 @@ def _set_reference(image_type, template_t1w, template_t2w=None):
     Returns
     -------
     reference_type : modality of template reference (T1w, T2w)
-    histogram_matching : False when image_type does not match reference image, otherwise Undefined
     """
-    from nipype.interfaces.base import Undefined
-
     if image_type == 'T2w':
         if template_t2w:
-            return 'T2w', Undefined
-        return 'T1w', False
-    return 'T1w', Undefined
+            return 'T2w'
+        return 'T1w'
+    return 'T1w'
 
 def _fmt_cohort(template, spec):
     cohort = spec.pop('cohort', None)
