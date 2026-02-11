@@ -110,7 +110,7 @@ singularity run \
 If you installed OncoPrep into a Python virtual environment on the HPC
 rather than using a Singularity container, you **must** ensure that
 external tools (ANTs, FSL, FreeSurfer, etc.) are available in `$PATH`
-on the compute node. On NCI Gadi, for example:
+on the compute node. For example:
 
 ```bash
 module load ants           # provides ImageMath, DenoiseImage, antsRegistration, etc.
