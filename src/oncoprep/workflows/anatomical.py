@@ -1562,8 +1562,8 @@ def init_anat_template_wf(
     )
 
     workflow.connect([
-        (inputnode, anat_ref_dimensions, [('anat_files', 'anat_list')]),
-        (anat_ref_dimensions, denoise, [('anat_valid_list', 'input_image')]),
+        (inputnode, anat_ref_dimensions, [('anat_files', 't1w_list')]),
+        (anat_ref_dimensions, denoise, [('t1w_valid_list', 'input_image')]),
         (anat_ref_dimensions, anat_conform, [
             ('target_zooms', 'target_zooms'),
             ('target_shape', 'target_shape'),
@@ -1571,7 +1571,7 @@ def init_anat_template_wf(
         (denoise, anat_conform, [('output_image', 'in_file')]),
         (anat_ref_dimensions, outputnode, [
             ('out_report', 'out_report'),
-            ('anat_valid_list', 'anat_valid_list'),
+            ('t1w_valid_list', 'anat_valid_list'),
         ]),
     ])
 
