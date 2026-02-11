@@ -244,11 +244,13 @@ def get_parser():
     )
     g_accel.add_argument(
         '--container-runtime',
-        choices=['auto', 'docker', 'singularity', 'apptainer'],
+        choices=['auto', 'docker', 'singularity', 'apptainer', 'direct'],
         default='auto',
         help='Container runtime for segmentation models. '
         '"auto" detects the best available runtime (default: auto). '
-        'Use "singularity" or "apptainer" on HPC systems without Docker.',
+        'Use "singularity" or "apptainer" on HPC systems without Docker. '
+        'Use "direct" to run pre-extracted models without any container runtime '
+        '(for use inside Singularity containers on HPC where nested containers are not supported).',
     )
     g_accel.add_argument(
         '--seg-cache-dir',

@@ -62,6 +62,42 @@ singularity run \
   --seg-cache-dir /seg_cache
 ```
 
+## 4. Direct Execution Mode (Recommended for HPC)
+
+When running inside a Singularity container on HPC, nested container
+invocation (singularity inside singularity) may not be supported. In this
+case, use the `direct` runtime to execute segmentation models directly
+from pre-extracted SIF files.
+
+### Step 1: Pull and extract models (on login node)
+
+```bash
+# Pull models as SIF files
+oncoprep-models pull -o /scratch/$PROJECT/$USER/seg_cache
+
+# Extract SIF files for direct execution
+oncoprep-models extract --cache-dir /scratch/$PROJECT/$USER/seg_cache
+```
+
+### Step 2: Run with direct runtime
+
+```bash
+singularity run --nv \
+  --bind /scratch/$PROJECT/$USER/seg_cache:/seg_cache \
+  oncoprep.sif \
+  /data/bids /data/bids/derivatives participant \
+  --participant-label sub-001 \
+  --run-segmentation \
+  --container-runtime direct \
+  --seg-cache-dir /seg_cache
+```
+
+The `direct` runtime:
+- Extracts model code from cached SIF files (if not already extracted)
+- Runs model scripts directly without container invocation
+- Works when neither Docker nor nested Singularity is available
+- Auto-detects when running inside a Singularity container
+
 ## PBS job script example
 
 ```bash
@@ -84,7 +120,7 @@ singularity run --nv \
   /data/bids /data/bids/derivatives participant \
   --participant-label sub-001 \
   --run-segmentation \
-  --container-runtime singularity \
+  --container-runtime direct \
   --seg-cache-dir /seg_cache \
   --work-dir /work
 ```
@@ -113,7 +149,7 @@ singularity run --nv \
   /data/bids /data/derivatives participant \
   --participant-label sub-001 \
   --run-segmentation \
-  --container-runtime singularity \
+  --container-runtime direct \
   --seg-cache-dir /seg_cache \
   --work-dir /work \
   --nprocs $SLURM_CPUS_PER_TASK

@@ -396,7 +396,7 @@ if torch.cuda.is_available():
     DOCKER-IN-SINGULARITY (Segmentation)
     ------------------------------------
     Tumor segmentation uses Docker containers internally. On HPC systems where
-    Docker is not available, you have two options:
+    Docker is not available, you have three options:
 
     1. Pre-run segmentation on a Docker-capable machine, then run OncoPrep
        with --skip-segmentation on HPC for the remaining preprocessing.
@@ -405,3 +405,18 @@ if torch.cuda.is_available():
        images to .sif files on a machine with Docker access:
          singularity build model.sif docker://brats/mic-dkfz:latest
        Then configure OncoPrep to use Singularity for model execution.
+
+    3. DIRECT EXECUTION (recommended for HPC): Pre-extract model SIFs for
+       direct execution without nested container invocation. This is the
+       best option when running inside the OncoPrep Singularity container
+       on HPC where neither Docker nor nested Singularity is available.
+
+       On a login node with singularity:
+         oncoprep-models pull --output-dir /scratch/$USER/seg_cache
+         oncoprep-models extract --cache-dir /scratch/$USER/seg_cache
+
+       Then run with:
+         singularity run --nv oncoprep.sif /data/bids /data/output participant \
+             --run-segmentation \
+             --container-runtime direct \
+             --seg-cache-dir /scratch/$USER/seg_cache

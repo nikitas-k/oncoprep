@@ -408,6 +408,102 @@ def _cmd_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_extract(args: argparse.Namespace) -> int:
+    """Extract SIF files for direct execution without container runtime.
+
+    This is useful when running inside a Singularity container on HPC
+    where nested container invocation is not supported. By pre-extracting
+    the models, they can be run directly without needing singularity/docker.
+    """
+    gpu = not args.cpu_only
+    cpu = not args.gpu_only
+    models = _load_model_configs(gpu=gpu, cpu=cpu)
+
+    cache_dir = Path(args.cache_dir).resolve()
+    if not cache_dir.is_dir():
+        print(f"Cache directory does not exist: {cache_dir}")
+        return 1
+
+    if args.models:
+        models = {k: v for k, v in models.items() if k in args.models}
+
+    # Import extraction function
+    try:
+        from oncoprep.utils.segment import _extract_sif_to_dir, _extracted_model_dir
+    except ImportError:
+        print("ERROR: Could not import extraction functions from oncoprep.utils.segment")
+        return 1
+
+    # Check for unsquashfs
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["unsquashfs", "-version"],
+            capture_output=True,
+            check=False,
+            timeout=5,
+        )
+        if result.returncode != 0:
+            print("ERROR: unsquashfs not found. Install squashfs-tools.")
+            return 1
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        print(
+            "ERROR: unsquashfs not available. "
+            "Install squashfs-tools (e.g., apt install squashfs-tools)."
+        )
+        return 1
+
+    total = len(models)
+    success = 0
+    failed = 0
+    skipped = 0
+
+    print(f"\nExtracting {total} models for direct execution...")
+    print(f"Cache directory: {cache_dir}\n")
+
+    for i, (key, cfg) in enumerate(sorted(models.items()), 1):
+        image_id = cfg.get("id")
+        if not image_id:
+            print(f"  [{i}/{total}] {key}: no image ID, skipping")
+            skipped += 1
+            continue
+
+        sif_name = image_id.replace("/", "_").replace(":", "_") + ".sif"
+        sif_path = cache_dir / sif_name
+
+        if not sif_path.is_file():
+            print(f"  [{i}/{total}] {key}: SIF not found ({sif_name}), skipping")
+            skipped += 1
+            continue
+
+        model_dir = _extracted_model_dir(image_id, cache_dir)
+        rootfs = model_dir / "rootfs"
+
+        if rootfs.is_dir() and any(rootfs.iterdir()) and not args.force:
+            print(f"  [{i}/{total}] {key}: already extracted, skipping")
+            skipped += 1
+            continue
+
+        print(f"  [{i}/{total}] {key}: extracting {sif_name} ...")
+        if _extract_sif_to_dir(sif_path, model_dir, force=args.force):
+            print(f"           → {model_dir.name}/rootfs/ ✓")
+            success += 1
+        else:
+            print(f"           ✗ FAILED", file=sys.stderr)
+            failed += 1
+
+    print(f"\nDone: {success} extracted, {skipped} skipped, {failed} failed.")
+    if success > 0:
+        print(
+            f"\nTo use extracted models with direct execution:\n"
+            f"  oncoprep <bids_dir> <output_dir> participant \\\n"
+            f"      --run-segmentation \\\n"
+            f"      --container-runtime direct \\\n"
+            f"      --seg-cache-dir {cache_dir}\n"
+        )
+    return 1 if failed > 0 else 0
+
+
 # ---------------------------------------------------------------------------
 # Parser
 # ---------------------------------------------------------------------------
@@ -492,6 +588,40 @@ def get_parser() -> argparse.ArgumentParser:
     p_status.add_argument("--gpu-only", action="store_true", help="Check only GPU models")
     p_status.add_argument("--cpu-only", action="store_true", help="Check only CPU models")
 
+    # -- extract --
+    p_extract = sub.add_parser(
+        "extract",
+        help="Extract SIF files for direct execution (no container runtime needed)",
+        formatter_class=argparse.RawTextHelpFormatter,
+        epilog=(
+            "Extract SIF files to enable direct execution when running inside a\n"
+            "Singularity container on HPC where nested container invocation is\n"
+            "not supported.\n\n"
+            "Examples:\n"
+            "  oncoprep-models extract --cache-dir /scratch/$USER/seg_cache\n"
+            "  oncoprep-models extract --cache-dir ./cache --models mic-dkfz econib\n"
+        ),
+    )
+    p_extract.add_argument(
+        "--cache-dir", "-d",
+        type=Path,
+        required=True,
+        help="Directory containing SIF files to extract",
+    )
+    p_extract.add_argument("--gpu-only", action="store_true", help="Extract only GPU models")
+    p_extract.add_argument("--cpu-only", action="store_true", help="Extract only CPU models")
+    p_extract.add_argument(
+        "--models", "-m",
+        nargs="+",
+        metavar="KEY",
+        help="Extract only specific models (by key name)",
+    )
+    p_extract.add_argument(
+        "--force", "-f",
+        action="store_true",
+        help="Re-extract even if already extracted",
+    )
+
     return parser
 
 
@@ -508,6 +638,7 @@ def main() -> None:
         "list": _cmd_list,
         "pull": _cmd_pull,
         "status": _cmd_status,
+        "extract": _cmd_extract,
     }
     sys.exit(dispatch[args.command](args))
 
