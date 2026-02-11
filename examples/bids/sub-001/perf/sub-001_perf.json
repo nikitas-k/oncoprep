@@ -1,0 +1,33 @@
+{
+    "Modality": "MR",
+    "MagneticFieldStrength": 3,
+    "ImagingFrequency": 123.22,
+    "Manufacturer": "SyntheticVendor",
+    "ManufacturersModelName": "PhantomScanner",
+    "BodyPart": "BRAIN",
+    "SoftwareVersions": "synthetic v1.0",
+    "MRAcquisitionType": "2D",
+    "SeriesDescription": "ep2d_perf_p2_MoCo",
+    "ProtocolName": "ep2d_perf_p2",
+    "ScanningSequence": "EP",
+    "SequenceVariant": "SK\\SP\\MP",
+    "ScanOptions": "IR",
+    "SequenceName": "*epfid2d1_128",
+    "ImageType": [
+        "DERIVED",
+        "PRIMARY",
+        "PERFUSION",
+        "ND",
+        "MOCO"
+    ],
+    "SeriesNumber": 73,
+    "SliceThickness": 1,
+    "EchoTime": 0.03,
+    "RepetitionTime": 1.7,
+    "InversionTime": 1.1,
+    "FlipAngle": 90,
+    "BaseResolution": 128,
+    "PixelBandwidth": 190,
+    "ConversionSoftware": "synthetic-gen",
+    "ConversionSoftwareVersion": "v0.1.0"
+}

@@ -458,6 +458,11 @@ setup.py
 UNUSED_FUNCTIONS_ANALYSIS.md
 VALIDATION_REPORT.md
 src/oncoprep/.DS_Store
-*examples
-*nii.gz
 copilot-instructions.md
+
+# Allow synthetic example BIDS data to be tracked (no patient content)
+# but keep raw DICOM stubs excluded (generated locally via tests/generate_synthetic_data.py)
+!examples/
+!examples/**
+examples/data/
+examples/.DS_Store

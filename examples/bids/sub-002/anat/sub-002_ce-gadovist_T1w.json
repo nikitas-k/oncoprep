@@ -1,0 +1,33 @@
+{
+    "Modality": "MR",
+    "MagneticFieldStrength": 3,
+    "ImagingFrequency": 123.22,
+    "Manufacturer": "SyntheticVendor",
+    "ManufacturersModelName": "PhantomScanner",
+    "BodyPart": "BRAIN",
+    "SoftwareVersions": "synthetic v1.0",
+    "MRAcquisitionType": "3D",
+    "SeriesDescription": "t1_mprage_sag_p2_1.0_iso_POST",
+    "ProtocolName": "t1_mprage_sag_p2_1.0_iso_POST",
+    "ScanningSequence": "GR\\IR",
+    "SequenceVariant": "SK\\SP\\MP",
+    "ScanOptions": "IR",
+    "SequenceName": "*tfl3d1_16ns",
+    "ImageType": [
+        "ORIGINAL",
+        "PRIMARY",
+        "M",
+        "ND",
+        "NORM"
+    ],
+    "SeriesNumber": 71,
+    "SliceThickness": 1,
+    "EchoTime": 0.0035,
+    "RepetitionTime": 2.0,
+    "InversionTime": 1.1,
+    "FlipAngle": 7,
+    "BaseResolution": 256,
+    "PixelBandwidth": 190,
+    "ConversionSoftware": "synthetic-gen",
+    "ConversionSoftwareVersion": "v0.1.0"
+}

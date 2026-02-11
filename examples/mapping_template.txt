@@ -1,0 +1,10 @@
+# Example DICOM series-to-BIDS modality mapping
+# Format: <dicom_series_description>=<bids_modality>
+#
+# Update the left-hand side to match your DICOM SeriesDescription
+# and the right-hand side to match the desired BIDS label.
+
+T1_MPRAGE=T1
+T1_POST=T1ce
+T2_SPC=T2
+T2_FLAIR=FLAIR
