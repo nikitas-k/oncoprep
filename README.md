@@ -46,20 +46,20 @@ OncoPrep supports multi-model ensemble tumor segmentation using containerized Br
 
 | Key | Year | Rank | Task | Architecture | Authors | Docker Image |
 |-----|------|------|------|-------------|---------|--------------|
-| `econib` | 2018 | — | Adult Glioma | 3D U-Net | M. Marcinkiewicz | `econib/brats-2018` |
-| `mic-dkfz` | 2018 | **1st** | Adult Glioma | nnU-Net | F. Isensee | `fabianisensee/isen2018` |
-| `scan` | 2018 | — | Adult Glioma | DeepSCAN | R. McKinley | `mckinleyscan/brats:v1` |
-| `xfeng` | 2018 | — | Adult Glioma | 3D U-Net | X. Feng | `xf4j/brats18` |
-| `lfb_rwth` | 2018 | — | Adult Glioma | 3D U-Net | L. Weninger | `leonweninger/brats18_segmentation` |
-| `gbmnet` | 2018 | — | Adult Glioma | GBMNet | N. Nuechterlein | `nknuecht/gbmnet18` |
-| `zyx_2019` | 2019 | — | Adult Glioma | — | Y. Zhao | `jiaocha/zyxbrats` |
-| `scan_2019` | 2019 | — | Adult Glioma | DeepSCAN | R. McKinley | `scan/brats2019` |
-| `isen-20` | 2020 | **1st** | Adult Glioma | nnU-Net | F. Isensee (DKFZ) | `brats/isen-20` |
-| `hnfnetv1-20` | 2020 | 2nd | Adult Glioma | HNFNet | H. Jia | `brats/hnfnetv1-20` |
-| `yixinmpl-20` | 2020 | 2nd | Adult Glioma | — | Y. Wang | `brats/yixinmpl-20` |
-| `sanet0-20` | 2020 | 3rd | Adult Glioma | SANet | Y. Yuan | `brats/sanet0-20` |
-| `scan-20` | 2020 | — | Adult Glioma | DeepSCAN | R. McKinley | `brats/scan-20` |
-| `kaist-21` | 2021 | **1st** | Adult Glioma | Extended nnU-Net + Axial Attention | H.M. Luu, S.-H. Park | `rixez/brats21nnunet` |
+| [`econib`](https://link.springer.com/chapter/10.1007/978-3-030-11726-9_2) | 2018 | — | Adult Glioma | 3D U-Net | M. Marcinkiewicz | `econib/brats-2018` |
+| [`mic-dkfz`](https://link.springer.com/chapter/10.1007/978-3-030-11726-9_21) | 2018 | **1st** | Adult Glioma | nnU-Net | F. Isensee | `fabianisensee/isen2018` |
+| [`scan`](https://link.springer.com/chapter/10.1007/978-3-030-11726-9_40) | 2018 | — | Adult Glioma | DeepSCAN | R. McKinley | `mckinleyscan/brats:v1` |
+| [`xfeng`](https://link.springer.com/chapter/10.1007/978-3-030-11726-9_25) | 2018 | — | Adult Glioma | 3D U-Net | X. Feng | `xf4j/brats18` |
+| [`lfb_rwth`](https://link.springer.com/chapter/10.1007/978-3-030-11726-9_1) | 2018 | — | Adult Glioma | 3D U-Net | L. Weninger | `leonweninger/brats18_segmentation` |
+| [`gbmnet`](https://link.springer.com/chapter/10.1007/978-3-030-11726-9_22) | 2018 | — | Adult Glioma | GBMNet | N. Nuechterlein | `nknuecht/gbmnet18` |
+| [`zyx_2019`](https://link.springer.com/chapter/10.1007/978-3-030-32248-9_29) | 2019 | — | Adult Glioma | — | Y. Zhao | `jiaocha/zyxbrats` |
+| [`scan_2019`](https://link.springer.com/chapter/10.1007/978-3-030-46640-4_36) | 2019 | — | Adult Glioma | DeepSCAN | R. McKinley | `scan/brats2019` |
+| [`isen-20`](https://doi.org/10.1007/978-3-030-72087-2_11) | 2020 | **1st** | Adult Glioma | nnU-Net | F. Isensee (DKFZ) | `brats/isen-20` |
+| [`hnfnetv1-20`](https://doi.org/10.1007/978-3-030-72087-2_6) | 2020 | 2nd | Adult Glioma | HNFNet | H. Jia | `brats/hnfnetv1-20` |
+| [`yixinmpl-20`](https://doi.org/10.1007/978-3-030-72084-1_21) | 2020 | 2nd | Adult Glioma | — | Y. Wang | `brats/yixinmpl-20` |
+| [`sanet0-20`](https://doi.org/10.1007/978-3-030-72084-1_26) | 2020 | 3rd | Adult Glioma | SANet | Y. Yuan | `brats/sanet0-20` |
+| [`scan-20`](https://doi.org/10.1007/978-3-030-72084-1_36) | 2020 | — | Adult Glioma | DeepSCAN | R. McKinley | `brats/scan-20` |
+| [`kaist-21`](https://link.springer.com/chapter/10.1007/978-3-031-09002-8_16) | 2021 | **1st** | Adult Glioma | Extended nnU-Net + Axial Attention | H.M. Luu, S.-H. Park | `rixez/brats21nnunet` |
 
 ### Running segmentation
 
