@@ -52,7 +52,7 @@ if [[ "$FILTER" != "--cpu-only" ]]; then
     pull xfeng        xf4j/brats18                        gpu
     pull zyx_2019     jiaocha/zyxbrats                     gpu
     pull scan_2019    scan/brats2019                       gpu
-    pull isen-20      brats/isen-20                        gpu
+    #pull isen-20      brats/isen-20                        gpu # skip for now, can't build on singularity-ce 3.11.3
     pull hnfnetv1-20  brats/hnfnetv1-20                    gpu
     pull yixinmpl-20  brats/yixinmpl-20                    gpu
     pull sanet0-20    brats/sanet0-20                      gpu
