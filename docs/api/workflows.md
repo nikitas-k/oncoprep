@@ -64,7 +64,19 @@ Each workflow factory returns a `Workflow` instance with `inputnode` and
    init_multimodal_radiomics_wf
 ```
 
-## Quality metrics
+## Quality control (MRIQC)
+
+```{eval-rst}
+.. module:: oncoprep.workflows.mriqc
+.. autosummary::
+   :toctree: _generated
+   :nosignatures:
+
+   init_mriqc_wf
+   init_mriqc_group_wf
+```
+
+### Legacy metrics *(deprecated)*
 
 ```{eval-rst}
 .. module:: oncoprep.workflows.metrics
@@ -78,6 +90,11 @@ Each workflow factory returns a `Workflow` instance with `inputnode` and
    init_tissue_stats_wf
    init_registration_quality_wf
 ```
+
+:::{warning}
+The workflows in `oncoprep.workflows.metrics` are deprecated.
+Use `init_mriqc_wf()` from `oncoprep.workflows.mriqc` instead.
+:::
 
 ## Derivatives output
 

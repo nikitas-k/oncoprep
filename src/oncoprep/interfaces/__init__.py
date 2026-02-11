@@ -56,6 +56,12 @@ except ImportError:
     pass
 
 try:
+    from .mriqc import MRIQC, MRIQCGroup, check_mriqc_available
+    __all__.extend(['MRIQC', 'MRIQCGroup', 'check_mriqc_available'])
+except ImportError:
+    pass
+
+try:
     from .surf import NormalizeSurf, FixGiftiMetadata, AggregateSurfaces, MakeRibbon
     __all__.extend(['NormalizeSurf', 'FixGiftiMetadata', 'AggregateSurfaces', 'MakeRibbon'])
 except ImportError:

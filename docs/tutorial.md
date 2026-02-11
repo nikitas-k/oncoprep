@@ -164,7 +164,24 @@ The JSON contains features for each tumor region (NCR, ED, ET, WT, TC)
 across feature classes (shape, first-order, GLCM, GLRLM, GLSZM, GLDM,
 NGTDM).
 
-## Step 5 — Reports
+## Step 5 — Quality control with MRIQC (optional)
+
+Run [MRIQC](https://mriqc.readthedocs.io/) to compute no-reference image
+quality metrics (IQMs) on the raw BIDS data. This runs *in parallel* with
+preprocessing and can flag unusable scans early:
+
+```bash
+pip install "oncoprep[mriqc]"
+
+oncoprep bids_output/ derivatives/ participant \
+  --participant-label 001 \
+  --run-qc
+```
+
+Quality metrics are written to `derivatives/mriqc/` and include per-subject
+HTML reports and JSON files with IQMs such as SNR, CNR, CJV, EFC, and FBER.
+
+## Step 6 — Reports
 
 Generate an HTML quality-assurance report:
 

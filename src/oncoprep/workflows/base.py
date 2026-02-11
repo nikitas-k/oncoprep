@@ -66,6 +66,7 @@ from oncoprep import __version__
 from oncoprep.workflows.segment import init_anat_seg_wf
 from oncoprep.workflows.brats_outputs import init_ds_tumor_seg_wf
 from oncoprep.workflows.radiomics import init_anat_radiomics_wf
+from oncoprep.workflows.mriqc import init_mriqc_wf
 from ..interfaces import DerivativesDataSink, OncoprepBIDSDataGrabber
 from ..interfaces.reports import SubjectSummary, AboutSummary
 from .anatomical import init_anat_preproc_wf
@@ -95,6 +96,7 @@ def init_oncoprep_wf(
     deface: bool = False,
     run_segmentation: bool = False,
     run_radiomics: bool = False,
+    run_qc: bool = False,
     seg_model_path: Optional[Path] = None,
     default_seg: bool = False,
     sloppy: bool = False,
@@ -142,6 +144,8 @@ def init_oncoprep_wf(
         Apply mri_deface to remove facial features for privacy (default: False)
     run_segmentation : bool
         Run tumor segmentation step (default: False, requires Docker; GPU used by default if available)
+    run_qc : bool
+        Run quality control on raw data using MRIQC (default: False)
     sloppy : bool
         Use faster settings for testing
 
@@ -207,6 +211,7 @@ to workflows in *OncoPrep*'s documentation]\
             deface=deface,
             run_segmentation=run_segmentation,
             run_radiomics=run_radiomics,
+            run_qc=run_qc,
             seg_model_path=seg_model_path,
             default_seg=default_seg,
             sloppy=sloppy,
@@ -249,6 +254,7 @@ def init_single_subject_wf(
     deface: bool = False,
     run_segmentation: bool = False,
     run_radiomics: bool = False,
+    run_qc: bool = False,
     seg_model_path: Optional[Path] = None,
     default_seg: bool = False,
     sloppy: bool = False,
@@ -315,6 +321,8 @@ def init_single_subject_wf(
         Apply mri_deface to remove facial features for privacy (default: False)
     run_segmentation : bool
         Run tumor segmentation (default: False, requires Docker; GPU used by default if available)
+    run_qc : bool
+        Run quality control on raw data using MRIQC (default: False)
     sloppy : bool
         Use faster settings
     name : str
@@ -582,6 +590,22 @@ to workflows in *OncoPrep*'s documentation]\
             ]),
         ])
 
+    # MRIQC quality control workflow (optional, runs on raw BIDS data)
+    if run_qc:
+        LOGGER.info('Initializing MRIQC quality control workflow (--run-qc)')
+        mriqc_wf = init_mriqc_wf(
+            bids_dir=bids_dir,
+            output_dir=output_dir,
+            subject_id=subject_id,
+            session_id=session_id if isinstance(session_id, str) else (
+                session_id[0] if isinstance(session_id, list) and session_id else None
+            ),
+            modalities=['T1w', 'T2w'],
+            work_dir=Path(str(output_dir)) / 'mriqc_work',
+            omp_nthreads=omp_nthreads,
+            name='mriqc_wf',
+        )
+
     # ---- Collate all figures into a single sub-<label>.html report ----
     from ..utils.collate import collate_subject_report as _collate_fn
 
@@ -592,6 +616,8 @@ to workflows in *OncoPrep*'s documentation]\
         n_sentinels += 1  # tumor dseg report
     if run_radiomics and run_segmentation:
         n_sentinels += 1  # radiomics report
+    if run_qc:
+        n_sentinels += 1  # mriqc report
     report_sentinel_merge = pe.Node(
         niu.Merge(n_sentinels, no_flatten=True),
         name='report_sentinel_merge',
@@ -620,15 +646,28 @@ to workflows in *OncoPrep*'s documentation]\
         ]),
     ])
 
+    _sentinel_idx = 3
     if run_segmentation:
+        _sentinel_idx += 1
         workflow.connect([
-            (ds_tumor_dseg_report, report_sentinel_merge, [('out_file', 'in4')]),
+            (ds_tumor_dseg_report, report_sentinel_merge, [('out_file', f'in{_sentinel_idx}')]),
         ])
 
     if run_radiomics and run_segmentation:
+        _sentinel_idx += 1
         workflow.connect([
             (anat_radiomics_wf, report_sentinel_merge, [
-                ('ds_radiomics_report.out_file', f'in{n_sentinels}'),
+                ('ds_radiomics_report.out_file', f'in{_sentinel_idx}'),
+            ]),
+        ])
+
+    if run_qc:
+        # Connect MRIQC output as a sentinel; the actual IQM output
+        # goes to <output_dir>/mriqc/ independently of the report collation.
+        _sentinel_idx += 1
+        workflow.connect([
+            (mriqc_wf, report_sentinel_merge, [
+                ('outputnode.mriqc_dir', f'in{_sentinel_idx}'),
             ]),
         ])
 
