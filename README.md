@@ -146,7 +146,7 @@ docker build --platform linux/amd64 -t oncoprep:latest .
 
 ## HPC / Singularity
 
-On HPC systems (e.g. NCI Gadi), Docker is unavailable. OncoPrep supports Singularity/Apptainer. All steps below run directly on the **login node** — no need to exec into any container.
+On HPC systems, Docker can be unavailable, so OncoPrep supports Singularity/Apptainer for HPC deployment. All steps below run directly on the **login node** — no need to exec into any container.
 
 ### 1. Build the OncoPrep SIF
 
