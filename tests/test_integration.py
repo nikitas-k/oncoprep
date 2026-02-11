@@ -55,7 +55,6 @@ class TestIntegrationWorkflow:
         # under subject directories (e.g. 001/T1_MPRAGE_..., 001/COR_FLAIR_...).
         # We search recursively for DICOM series dirs and create minimal
         # NIfTI stubs from them to populate the BIDS layout.
-        from oncoprep.workflows.dicom_conversion import infer_modality_from_series
 
         # Map BIDS suffix → glob patterns that match series directory names
         anatomical_mappings = {

@@ -28,7 +28,7 @@ class TestModalityInference:
 
     def test_t1ce_variants(self) -> None:
         """Test T1 contrast-enhanced modality detection."""
-        mod, ce, agent = infer_modality_from_series('T1CE')
+        mod, ce, _agent = infer_modality_from_series('T1CE')
         assert mod == 'T1w'
         assert ce is True
         mod, ce, _ = infer_modality_from_series('T1_CE')

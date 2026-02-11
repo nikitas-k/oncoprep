@@ -177,8 +177,15 @@ class HistogramNormalization(SimpleInterface):
 
         # Derive a unique output name from the input to avoid collisions
         # in parallel (multimodal) workflows sharing a working directory.
-        in_stem = Path(self.inputs.in_file).name.split('.')[0]
-        out_path = os.path.abspath(f'{in_stem}_normalized.nii.gz')
+        in_name = Path(self.inputs.in_file).name
+        # Strip .nii.gz / .nii in one step so e.g. 'sub-01_T1w.nii.gz' → 'sub-01_T1w'
+        for ext in ('.nii.gz', '.nii'):
+            if in_name.endswith(ext):
+                in_stem = in_name[:-len(ext)]
+                break
+        else:
+            in_stem = Path(in_name).stem
+        out_path = os.path.join(runtime.cwd, f'{in_stem}_normalized.nii.gz')
         nib.save(out_img, out_path)
         self._results['out_file'] = out_path
 
