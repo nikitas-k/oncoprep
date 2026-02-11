@@ -80,6 +80,20 @@ oncoprep /path/to/bids /path/to/derivatives participant --participant-label sub-
 
 OncoPrep includes a radiomics feature extraction pipeline built on [PyRadiomics](https://pyradiomics.readthedocs.io/), integrated as a Nipype workflow (`init_anat_radiomics_wf`). It computes quantitative imaging features from preprocessed anatomical images using the tumor segmentation masks produced by the segmentation step.
 
+### Intensity normalization (best practice)
+
+Before feature extraction, each image undergoes **brain-masked intensity normalization** following [IBSI](https://theibsi.github.io/) best-practice recommendations for reproducible radiomics. This step standardizes voxel intensities across subjects, scanners, and acquisition protocols so that texture and first-order features are comparable across cohorts.
+
+Three methods are available, selectable via the `HistogramNormalization` interface:
+
+| Method | Description | When to use |
+|--------|-------------|-------------|
+| **zscore** (default) | Winsorized z-score within the brain mask. Clips at 1st/99th percentile, then transforms to zero mean / unit variance. | General purpose; recommended for most use cases |
+| **nyul** | Nyul–Udupa piecewise-linear histogram standardization mapping decile landmarks to a [0, 100] scale. | Multi-site studies with consistent anatomy |
+| **whitestripe** | Normalizes to the dominant tissue peak (WM for T1w) via smoothed histogram mode estimation. | T1w-specific studies |
+
+The normalization node is automatically inserted between image preprocessing and PyRadiomics extraction in both `init_anat_radiomics_wf` and `init_multimodal_radiomics_wf`.
+
 ### Install
 
 PyRadiomics is an optional dependency:
