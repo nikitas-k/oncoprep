@@ -347,49 +347,6 @@ def anonymize_dicom_series(dicom_dir: Path) -> bool:
         return False
 
 
-def infer_modality_from_series(series_name: str) -> Optional[str]:
-    """
-    Infer BIDS modality from DICOM series description.
-    
-    Parameters
-    ----------
-    series_name : str
-        DICOM series description or directory name
-        
-    Returns
-    -------
-    Tuple[str, bool, Optional[str]]
-        (BIDS modality suffix, is_contrast_enhanced, contrast_agent)
-        For contrast-enhanced T1w: returns ('T1w', True, 'gd')
-    """
-    upper_name = series_name.upper()
-    
-    # Check for contrast enhancement first (for T1w images)
-    is_contrast, agent = detect_contrast_enhancement(series_name, dicom_dir)
-    
-    # Check for T1CE/T1 CE keywords - these are contrast-enhanced T1w
-    for key in ['T1CE', 'T1_CE', 'T1 CE', 'T1+C', 'T1POST', 'T1_POST']:
-        if key in upper_name:
-            return 'T1w', True, agent or 'gd'
-    
-    # Check for T1w with contrast enhancement
-    if any(k in upper_name for k in ['T1W', 'T1', 'MPRAGE', 'SPGR', 'BRAVO']):
-        if is_contrast:
-            return 'T1w', True, agent
-        # Check for POST in T1 series name (common convention)
-        if 'POST' in upper_name:
-            return 'T1w', True, agent or 'gd'
-        return 'T1w', False, None
-    
-    # Check for other modalities
-    for key, modality in MODALITY_MAPPING.items():
-        if key in upper_name:
-            return modality, False, None
-    
-    # Fallback to default
-    return None, False, None
-
-
 def infer_modality_from_series(
     series_name: str,
     dicom_dir: Optional[Path] = None,
