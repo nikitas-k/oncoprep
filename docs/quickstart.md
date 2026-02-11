@@ -28,7 +28,18 @@ This runs the full anatomical preprocessing pipeline:
 6. Normalizes to MNI152NLin2009cAsym template space
 7. Writes BIDS derivative outputs
 
-## 3. Run with segmentation
+## 3. Run with quality control
+
+```bash
+# Run preprocessing with MRIQC quality metrics
+oncoprep /path/to/bids /path/to/derivatives participant \
+  --participant-label sub-001 \
+  --run-qc
+```
+
+IQM reports are written to `<output_dir>/mriqc/`.
+
+## 4. Run with segmentation
 
 ```bash
 # Default single model (CPU, fast)

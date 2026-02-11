@@ -19,7 +19,7 @@ FROM --platform=linux/amd64 python:${PYTHON_VERSION}-slim AS base
 LABEL maintainer="OncoPrep Contributors"
 LABEL org.opencontainers.image.title="OncoPrep"
 LABEL org.opencontainers.image.description="Neuro-oncology MRI preprocessing pipeline"
-LABEL org.opencontainers.image.version="0.1.0"
+LABEL org.opencontainers.image.version="0.2.0"
 LABEL org.opencontainers.image.licenses="Apache-2.0"
 LABEL org.opencontainers.image.source="https://github.com/neuronets/oncoprep"
 

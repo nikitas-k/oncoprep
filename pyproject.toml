@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "oncoprep"
-version = "0.1.0"
+version = "0.2.0"
 description = "A toolbox for analysing neuro-oncology MRI"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -43,6 +43,9 @@ hd-bet = [
 ]
 radiomics = [
     "pyradiomics==3.0.1",
+]
+mriqc = [
+    "mriqc>=24.0",
 ]
 # torch = [
 #     "torch",

@@ -188,6 +188,12 @@ def get_parser():
         help='run radiomics feature extraction on tumor segmentations '
         '(requires pyradiomics; implies --run-segmentation)',
     )
+    g_conf.add_argument(
+        '--run-qc',
+        action='store_true',
+        help='run quality control on raw BIDS data using MRIQC before '
+        'preprocessing (requires mriqc; outputs to <output_dir>/mriqc/)',
+    )
     
     # ANTs options
     g_ants = parser.add_argument_group('Specific options for ANTs registrations')
@@ -586,6 +592,7 @@ def build_workflow(opts, retval):
         deface=opts.deface,
         run_segmentation=opts.run_segmentation or opts.run_radiomics,
         run_radiomics=opts.run_radiomics,
+        run_qc=opts.run_qc,
         seg_model_path=opts.seg_model_path,
         default_seg=opts.default_seg,
         sloppy=opts.sloppy,

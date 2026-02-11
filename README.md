@@ -184,6 +184,51 @@ extract = PyRadiomicsFeatureExtraction(
 
 See the [PyRadiomics documentation](https://pyradiomics.readthedocs.io/en/latest/customization.html) for all available settings.
 
+## Quality Control (MRIQC)
+
+OncoPrep integrates [MRIQC](https://mriqc.readthedocs.io/) for automated image quality assessment. MRIQC computes no-reference image quality metrics (IQMs) on raw BIDS anatomical data **before** preprocessing, enabling early detection of unusable scans due to motion artifacts, signal inhomogeneity, or acquisition problems.
+
+### Install
+
+MRIQC is an optional dependency:
+
+```bash
+pip install "oncoprep[mriqc]"
+```
+
+### Running quality control
+
+```bash
+# Run preprocessing + quality control
+oncoprep /path/to/bids /path/to/derivatives participant \
+  --participant-label sub-001 --run-qc
+
+# Combine with segmentation and radiomics
+oncoprep /path/to/bids /path/to/derivatives participant \
+  --participant-label sub-001 --run-qc --run-radiomics --default-seg
+```
+
+### Key metrics
+
+| Metric | Description | Concern if |
+|--------|-------------|------------|
+| **SNR** | Signal-to-noise ratio | < 3.0 |
+| **CNR** | Contrast-to-noise (GM/WM) | Low |
+| **CJV** | Coefficient of joint variation | > 0.6 |
+| **EFC** | Entropy focus criterion | > 0.6 (ghosting/ringing) |
+| **FBER** | Foreground-background energy ratio | Low |
+| **QI1** | Proportion of artifact voxels | > 0.05 |
+
+### Outputs
+
+MRIQC produces outputs in `<output_dir>/mriqc/`:
+
+| File | Description |
+|------|-------------|
+| `sub-XXX_T1w.html` | Per-subject visual QC report |
+| `sub-XXX_T1w.json` | Per-subject IQM values |
+| `group_T1w.tsv` | Group-level IQM summary (if multiple subjects) |
+
 #### Custom label definitions
 
 Override the default BraTS label map for non-standard segmentation masks:
