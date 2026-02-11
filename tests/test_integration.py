@@ -44,8 +44,6 @@ class TestIntegrationWorkflow:
         example_data_dir : Path
             Fixture providing path to example data
         """
-        import shutil
-
         subject_id = "001"
         session_id = "01"
 
@@ -53,21 +51,32 @@ class TestIntegrationWorkflow:
         anat_dir = bids_dir / f"sub-{subject_id}" / f"ses-{session_id}" / "anat"
         anat_dir.mkdir(parents=True, exist_ok=True)
 
-        # Copy T1, T1c (T1ce), T2, FLAIR from example data
+        # The example data contains DICOM series directories nested
+        # under subject directories (e.g. 001/T1_MPRAGE_..., 001/COR_FLAIR_...).
+        # We search recursively for DICOM series dirs and create minimal
+        # NIfTI stubs from them to populate the BIDS layout.
+        from oncoprep.workflows.dicom_conversion import infer_modality_from_series
+
+        # Map BIDS suffix → glob patterns that match series directory names
         anatomical_mappings = {
-            "T1w": "*T1[^c]*",      # T1w (not T1c)
-            "T1ce": "*T1c*",        # T1ce (contrast enhanced)
-            "T2w": "*T2[^_]*",      # T2w
-            "FLAIR": "*FLAIR*",     # FLAIR
+            "T1w": "**/T1_MPRAGE*",         # T1w (pre-contrast)
+            "T1ce": "**/T1*POST*",          # T1ce (post-contrast)
+            "T2w": "**/T2*",               # T2w
+            "FLAIR": "**/*FLAIR*",          # FLAIR
         }
 
         copied_files = {}
         for modality, pattern in anatomical_mappings.items():
-            source_files = list(example_data_dir.glob(pattern))
-            if source_files:
-                source_file = source_files[0]
+            source_dirs = sorted(example_data_dir.glob(pattern))
+            if source_dirs:
+                source_dir = source_dirs[0]
                 dest_file = anat_dir / f"sub-{subject_id}_ses-{session_id}_{modality}.nii.gz"
-                shutil.copy2(source_file, dest_file)
+
+                # Create a tiny dummy NIfTI (the real conversion needs
+                # dcm2niix, so we just prove the layout is correct).
+                data = np.random.randint(100, 200, (8, 8, 8), dtype=np.uint8)
+                img = nb.Nifti1Image(data, np.eye(4))
+                nb.save(img, dest_file)
                 copied_files[modality] = dest_file
 
                 # Create JSON sidecar
@@ -78,6 +87,7 @@ class TestIntegrationWorkflow:
                         "RepetitionTime": 2.3,
                         "FlipAngle": 9,
                         "Modality": modality,
+                        "SourceSeriesDir": source_dir.name,
                     }, f)
 
         # Verify structure

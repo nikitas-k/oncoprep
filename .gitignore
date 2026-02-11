@@ -21,6 +21,9 @@
 *work/
 *.DS_Store
 *dist
+*.nii.gz
+*_build
+*_generated
 
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
@@ -463,3 +466,5 @@ src/oncoprep/.DS_Store
 .gitignore
 pytest.ini
 .github/copilot-instructions.md
+const_normalized.nii.gz
+.gitignore
