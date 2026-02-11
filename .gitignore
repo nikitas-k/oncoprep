@@ -464,5 +464,4 @@ copilot-instructions.md
 # but keep raw DICOM stubs excluded (generated locally via tests/generate_synthetic_data.py)
 !examples/
 !examples/**
-examples/data/
 examples/.DS_Store
