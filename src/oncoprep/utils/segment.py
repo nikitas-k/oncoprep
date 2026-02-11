@@ -17,7 +17,8 @@ from oncoprep.utils.logging import get_logger
 LOGGER = get_logger(__name__)
 
 # Valid container runtime values
-ContainerRuntime = Literal["docker", "singularity", "apptainer", "auto"]
+# "direct" = run model code directly (no container) when inside Singularity
+ContainerRuntime = Literal["docker", "singularity", "apptainer", "direct", "auto"]
 
 
 # ---------------------------------------------------------------------------
@@ -110,25 +111,35 @@ def detect_container_runtime(
     2. If Docker daemon is reachable, use ``"docker"``.
     3. If a Singularity/Apptainer CLI is found, use that.
     4. If inside a Singularity container (env vars set) and a seg-cache
-       directory exists with pre-downloaded images, assume ``"singularity"``
-       — the host binary will be resolved at execution time.
+       directory exists with pre-downloaded images, use ``"direct"``
+       to run model code directly without nested container invocation.
     5. Raise :class:`RuntimeError`.
 
     Parameters
     ----------
-    requested : {"docker", "singularity", "apptainer", "auto"}
+    requested : {"docker", "singularity", "apptainer", "direct", "auto"}
         Explicit runtime choice, or ``"auto"`` to detect.
     seg_cache_dir : Path, optional
         Directory containing pre-downloaded model images.  For Singularity
         runtimes this holds ``.sif`` files; for Docker, ``.tar`` files.
-        When provided inside a Singularity/Apptainer container, returns
-        ``"singularity"`` even when no CLI is on PATH.
+        For "direct" runtime, contains extracted model directories.
 
     Returns
     -------
     str
-        One of ``"docker"``, ``"singularity"``, or ``"apptainer"``.
+        One of ``"docker"``, ``"singularity"``, ``"apptainer"``, or ``"direct"``.
     """
+    if requested == "direct":
+        # User explicitly requested direct execution
+        if not _is_inside_singularity():
+            LOGGER.warning(
+                "Direct runtime requested but not running inside a Singularity "
+                "container. Direct execution assumes models are pre-extracted "
+                "or that we're in an environment with model dependencies installed."
+            )
+        LOGGER.info("Using 'direct' runtime — models will be executed without container.")
+        return "direct"
+
     if requested in ("singularity", "apptainer"):
         cmd = _find_singularity_cmd()
         if cmd is None:
@@ -173,31 +184,33 @@ def detect_container_runtime(
             )
             return cmd
         # No CLI found, but we ARE inside Singularity — check for cached
-        # SIF files.  The host `singularity` binary may not be on the
-        # container PATH but will be available if the user binds it in or
-        # uses `singularity exec` from the host.
+        # SIF files. Use "direct" execution mode to extract and run models
+        # without nested container invocation.
         cache = seg_cache_dir or _resolve_seg_cache_dir()
-        if cache is not None and cache.is_dir() and any(cache.glob("*.sif")):
-            LOGGER.info(
-                "Inside Singularity container — no CLI found but SIF cache "
-                "directory '%s' contains pre-downloaded images.  Using "
-                "'singularity' runtime.  Ensure the host binary is "
-                "bind-mounted or on PATH.",
-                cache,
-            )
-            return "singularity"
+        if cache is not None and cache.is_dir():
+            # Check for extracted model directories or SIF files
+            has_sif = any(cache.glob("*.sif"))
+            has_extracted = any((cache / d).is_dir() and (cache / d / "rootfs").is_dir()
+                                for d in os.listdir(cache) if (cache / d).is_dir())
+            if has_sif or has_extracted:
+                LOGGER.info(
+                    "Inside Singularity container — no container CLI found but "
+                    "cache directory '%s' contains model images. Using 'direct' "
+                    "runtime to execute models without nested container invocation.",
+                    cache,
+                )
+                return "direct"
         # Last resort: still inside Singularity, maybe the user just
-        # forgot --container-runtime. Return "singularity" with a warning.
+        # forgot --container-runtime. Return "direct" with a warning.
         LOGGER.warning(
             "Inside a Singularity/Apptainer container but no container "
-            "runtime CLI was found on PATH and no pre-cached model images "
-            "were detected.  Pre-download segmentation models with:\n"
+            "runtime CLI was found on PATH. Attempting 'direct' execution. "
+            "If this fails, pre-download segmentation models with:\n"
             "  oncoprep-models pull --output-dir /path/to/seg_cache\n"
             "then re-run with:\n"
-            "  --container-runtime singularity --seg-cache-dir /path/to/seg_cache\n"
-            "Attempting to continue with 'singularity' runtime."
+            "  --container-runtime direct --seg-cache-dir /path/to/seg_cache"
         )
-        return "singularity"
+        return "direct"
 
     if _docker_available():
         LOGGER.debug("Docker daemon reachable — using Docker runtime.")
@@ -280,6 +293,205 @@ def _sif_path_for_image(image_id: str, cache_dir: Optional[Path] = None) -> Path
         cache_dir = _default_seg_cache_dir()
     safe_name = image_id.replace("/", "_").replace(":", "_")
     return cache_dir / f"{safe_name}.sif"
+
+
+def _extracted_model_dir(image_id: str, cache_dir: Optional[Path] = None) -> Path:
+    """Return the expected extracted model directory for a Docker image ID.
+
+    Extracted models are stored as ``owner_image_tag/rootfs/``.
+    """
+    if cache_dir is None:
+        cache_dir = _default_seg_cache_dir()
+    safe_name = image_id.replace("/", "_").replace(":", "_")
+    return cache_dir / safe_name
+
+
+def _is_model_extracted(image_id: str, cache_dir: Optional[Path] = None) -> bool:
+    """Check if model has been extracted from its SIF/container."""
+    model_dir = _extracted_model_dir(image_id, cache_dir)
+    rootfs = model_dir / "rootfs"
+    return rootfs.is_dir() and any(rootfs.iterdir())
+
+
+def _extract_sif_to_dir(
+    sif_path: Path,
+    output_dir: Path,
+    force: bool = False,
+) -> bool:
+    """Extract a Singularity SIF file to a directory.
+
+    Tries multiple extraction methods in order:
+    1. singularity build --sandbox (preferred, available on HPC login nodes)
+    2. apptainer build --sandbox
+    3. unsquashfs (requires squashfs-tools system package)
+
+    IMPORTANT: This should be run on an HPC login node where singularity
+    is available, NOT inside a container.
+
+    Parameters
+    ----------
+    sif_path : Path
+        Path to the .sif file
+    output_dir : Path
+        Directory where the filesystem will be extracted
+    force : bool
+        If True, re-extract even if output_dir already exists
+
+    Returns
+    -------
+    bool
+        True if extraction succeeded, False otherwise
+    """
+    rootfs = output_dir / "rootfs"
+    if rootfs.is_dir() and any(rootfs.iterdir()) and not force:
+        LOGGER.debug("Model already extracted at %s", output_dir)
+        return True
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Method 1: Try singularity/apptainer build --sandbox
+    # This is the preferred method on HPC login nodes
+    sing_cmd = _find_singularity_cmd()
+    if sing_cmd:
+        LOGGER.info("Extracting SIF using '%s build --sandbox' to %s ...", sing_cmd, rootfs)
+        try:
+            # Remove existing rootfs if force
+            if rootfs.exists() and force:
+                import shutil
+                shutil.rmtree(str(rootfs))
+
+            result = subprocess.run(
+                [sing_cmd, "build", "--sandbox", str(rootfs), str(sif_path)],
+                capture_output=True,
+                check=True,
+                timeout=600,  # 10 minute timeout
+            )
+            LOGGER.info("Successfully extracted SIF to %s", rootfs)
+            return True
+        except subprocess.CalledProcessError as e:
+            LOGGER.warning(
+                "singularity/apptainer build --sandbox failed: %s. "
+                "Trying alternative methods...",
+                e.stderr.decode() if e.stderr else str(e)
+            )
+        except subprocess.TimeoutExpired:
+            LOGGER.warning("singularity build --sandbox timed out. Trying alternatives...")
+
+    # Method 2: Try unsquashfs (requires squashfs-tools)
+    try:
+        result = subprocess.run(
+            ["unsquashfs", "-version"],
+            capture_output=True,
+            check=False,
+            timeout=5,
+        )
+        has_unsquashfs = result.returncode == 0
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        has_unsquashfs = False
+
+    if has_unsquashfs:
+        LOGGER.info("Extracting SIF using unsquashfs to %s ...", rootfs)
+
+        # Find SquashFS offset in SIF file
+        try:
+            with open(sif_path, 'rb') as f:
+                content = f.read()
+                offset = content.find(b'hsqs')
+                if offset == -1:
+                    LOGGER.error("Could not find SquashFS partition in SIF file")
+                    return False
+                LOGGER.debug("Found SquashFS at offset %d in %s", offset, sif_path)
+        except Exception as e:
+            LOGGER.error("Failed to read SIF file: %s", e)
+            return False
+
+        # Extract SquashFS to rootfs/
+        cmd = [
+            "unsquashfs",
+            "-f",  # Force overwrite
+            "-d", str(rootfs),
+            "-o", str(offset),
+            str(sif_path),
+        ]
+
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                check=True,
+                timeout=300,
+            )
+            LOGGER.info("Successfully extracted SIF to %s", rootfs)
+            return True
+        except subprocess.CalledProcessError as e:
+            LOGGER.error("unsquashfs failed: %s", e.stderr.decode())
+            return False
+        except subprocess.TimeoutExpired:
+            LOGGER.error("unsquashfs timed out")
+            return False
+
+    # No extraction method available
+    LOGGER.error(
+        "Cannot extract SIF file: no extraction tool available.\n\n"
+        "This command must be run on an HPC LOGIN NODE (not inside a container)\n"
+        "where singularity/apptainer is available. Typical workflow:\n\n"
+        "  # On login node:\n"
+        "  module load singularity\n"
+        "  oncoprep-models pull -o /scratch/$USER/seg_cache\n"
+        "  oncoprep-models extract --cache-dir /scratch/$USER/seg_cache\n\n"
+        "  # Then submit job with:\n"
+        "  singularity run --nv oncoprep.sif ... --container-runtime direct\n\n"
+        "If you are on a login node, try:\n"
+        "  module load singularity   # or: module load apptainer\n"
+        "  module load squashfs-tools  # alternative if singularity unavailable"
+    )
+    return False
+
+
+def _ensure_model_extracted(
+    image_id: str,
+    cache_dir: Optional[Path] = None,
+) -> Optional[Path]:
+    """Ensure model is extracted from SIF for direct execution.
+
+    If the model is already extracted, returns the path to its rootfs.
+    Otherwise, extracts from the SIF file.
+
+    Parameters
+    ----------
+    image_id : str
+        Docker-style image ID
+    cache_dir : Path, optional
+        Cache directory containing SIF files
+
+    Returns
+    -------
+    Path or None
+        Path to extracted rootfs directory, or None if extraction failed
+    """
+    if cache_dir is None:
+        cache_dir = _default_seg_cache_dir()
+
+    model_dir = _extracted_model_dir(image_id, cache_dir)
+    rootfs = model_dir / "rootfs"
+
+    if rootfs.is_dir() and any(rootfs.iterdir()):
+        LOGGER.debug("Model %s already extracted at %s", image_id, rootfs)
+        return rootfs
+
+    # Try to extract from SIF
+    sif = _sif_path_for_image(image_id, cache_dir)
+    if not sif.is_file():
+        LOGGER.error(
+            "Cannot extract model %s: SIF file not found at %s. "
+            "Pre-download models with: oncoprep-models pull -o %s",
+            image_id, sif, cache_dir,
+        )
+        return None
+
+    if _extract_sif_to_dir(sif, model_dir):
+        return rootfs
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -380,6 +592,40 @@ def check_singularity_image(
     return sif.is_file()
 
 
+def check_direct_model(
+    image_id: str,
+    cache_dir: Optional[Path] = None,
+) -> bool:
+    """Check if a model is available for direct execution.
+
+    For direct execution, the model must either:
+    - Be extracted from a SIF to a rootfs directory, OR
+    - Have a SIF file that can be extracted on-demand
+
+    Parameters
+    ----------
+    image_id : str
+        Docker-style image ID (e.g., 'fabianisensee/isen2018')
+    cache_dir : Path, optional
+        Directory containing cached models
+
+    Returns
+    -------
+    bool
+        True if model can be executed directly
+    """
+    if cache_dir is None:
+        cache_dir = _default_seg_cache_dir()
+
+    # Check if already extracted
+    if _is_model_extracted(image_id, cache_dir):
+        return True
+
+    # Check if SIF exists (can be extracted)
+    sif = _sif_path_for_image(image_id, cache_dir)
+    return sif.is_file()
+
+
 def check_container_image(
     image_id: str,
     runtime: str = "docker",
@@ -392,7 +638,7 @@ def check_container_image(
     image_id : str
         Docker-style image ID
     runtime : str
-        Container runtime ("docker", "singularity", or "apptainer")
+        Container runtime ("docker", "singularity", "apptainer", or "direct")
     seg_cache_dir : Path, optional
         Cache directory for model images
 
@@ -403,6 +649,8 @@ def check_container_image(
     """
     if runtime == "docker":
         return check_docker_image(image_id)
+    if runtime == "direct":
+        return check_direct_model(image_id, seg_cache_dir)
     return check_singularity_image(image_id, seg_cache_dir)
 
 

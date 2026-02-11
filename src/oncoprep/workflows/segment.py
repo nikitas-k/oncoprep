@@ -167,7 +167,7 @@ def _run_segmentation_container(
     container_runtime="docker",
     seg_cache_dir=None,
 ):
-    """Execute a segmentation container via Docker or Singularity/Apptainer.
+    """Execute a segmentation container via Docker, Singularity/Apptainer, or directly.
 
     Parameters
     ----------
@@ -186,9 +186,9 @@ def _run_segmentation_container(
     verbose : bool
         Print execution details
     container_runtime : str
-        Container runtime to use ("docker", "singularity", or "apptainer")
+        Container runtime to use ("docker", "singularity", "apptainer", or "direct")
     seg_cache_dir : str or None
-        Directory containing cached SIF files (Singularity/Apptainer only)
+        Directory containing cached SIF files or extracted models
 
     Returns
     -------
@@ -211,7 +211,151 @@ def _run_segmentation_container(
     mountpoint = config.get("mountpoint", "/data")
     model_command = config.get('command', 'segment')
 
-    if container_runtime in ("singularity", "apptainer"):
+    if container_runtime == "direct":
+        # ---- Direct execution path ----
+        # Run model directly from extracted SIF filesystem without container runtime.
+        # This is used when running inside a Singularity container on HPC where
+        # nested container invocation is not available.
+        from pathlib import Path as _Path
+
+        if seg_cache_dir is not None:
+            cache = _Path(seg_cache_dir)
+        else:
+            for var in ("ONCOPREP_SEG_CACHE", "SINGULARITY_CACHEDIR", "APPTAINER_CACHEDIR"):
+                val = os.environ.get(var)
+                if val:
+                    cache = _Path(val) / "oncoprep_seg"
+                    break
+            else:
+                cache = _Path.home() / ".cache" / "oncoprep" / "seg"
+
+        safe_name = image_id.replace("/", "_").replace(":", "_")
+        model_dir = cache / safe_name
+        rootfs = model_dir / "rootfs"
+
+        # Check if model is extracted, if not try to extract from SIF
+        if not rootfs.is_dir() or not any(rootfs.iterdir()):
+            sif_path = cache / f"{safe_name}.sif"
+            if not sif_path.is_file():
+                LOGGER.error(
+                    f"Cannot run model {container_id}: neither extracted rootfs "
+                    f"nor SIF file found. Pre-download models with:\n"
+                    f"  oncoprep-models pull -o {cache}"
+                )
+                results_dst = os.path.abspath('results')
+                os.makedirs(results_dst, exist_ok=True)
+                return False, results_dst
+
+            # Try to extract SIF
+            LOGGER.info(f"Extracting SIF {sif_path} for direct execution...")
+            from oncoprep.utils.segment import _extract_sif_to_dir
+            if not _extract_sif_to_dir(sif_path, model_dir):
+                LOGGER.error(f"Failed to extract SIF for model {container_id}")
+                results_dst = os.path.abspath('results')
+                os.makedirs(results_dst, exist_ok=True)
+                return False, results_dst
+
+        # Prepare environment for direct execution
+        # Create a symlink from the expected mountpoint to temp_dir
+        # so model scripts can find their data at the expected path
+        container_mountpoint = rootfs / mountpoint.lstrip('/')
+        container_mountpoint.parent.mkdir(parents=True, exist_ok=True)
+
+        # If mountpoint dir exists, remove it so we can symlink to temp_dir
+        if container_mountpoint.exists() or container_mountpoint.is_symlink():
+            if container_mountpoint.is_symlink():
+                container_mountpoint.unlink()
+            elif container_mountpoint.is_dir():
+                import shutil
+                shutil.rmtree(str(container_mountpoint))
+
+        # Symlink the data directory
+        os.symlink(temp_dir, str(container_mountpoint))
+        LOGGER.debug(f"Created symlink: {container_mountpoint} -> {temp_dir}")
+
+        # Also create a results directory
+        results_container = _Path(temp_dir) / "results"
+        results_container.mkdir(exist_ok=True)
+
+        # Build direct execution command
+        # We'll use env to set up the path and run within the extracted filesystem
+        env = os.environ.copy()
+
+        # Add extracted rootfs paths to environment
+        env['PATH'] = f"{rootfs}/usr/local/bin:{rootfs}/usr/bin:{rootfs}/bin:" + env.get('PATH', '')
+        env['LD_LIBRARY_PATH'] = (
+            f"{rootfs}/usr/local/lib:{rootfs}/usr/lib:{rootfs}/usr/lib/x86_64-linux-gnu:"
+            f"{rootfs}/lib:{rootfs}/lib/x86_64-linux-gnu:" + env.get('LD_LIBRARY_PATH', '')
+        )
+        env['PYTHONPATH'] = f"{rootfs}/usr/local/lib/python3.6/site-packages:{rootfs}/usr/lib/python3/dist-packages:" + env.get('PYTHONPATH', '')
+
+        # Parse and build the command
+        # Some models have absolute paths in their commands
+        cmd_parts = model_command.strip().split() if model_command and model_command.strip() else []
+        if not cmd_parts:
+            LOGGER.warning(f"Model {container_id} has empty command - running container entrypoint")
+            # Try to find entrypoint script
+            entrypoint = rootfs / "entrypoint.sh"
+            if entrypoint.is_file():
+                cmd_parts = ["/bin/bash", str(entrypoint)]
+            else:
+                cmd_parts = ["/bin/bash", "-c", f"cd {mountpoint} && python infer.py"]
+
+        # Adjust absolute paths in the command to use rootfs
+        adjusted_cmd = []
+        for part in cmd_parts:
+            if part.startswith('/') and not part.startswith('/data'):
+                adjusted_cmd.append(str(rootfs) + part)
+            else:
+                adjusted_cmd.append(part)
+
+        # Build the full command - run from within rootfs with chroot-like approach
+        # We'll use proot if available, otherwise direct execution
+        try:
+            subprocess.run(["proot", "--version"], capture_output=True, check=True, timeout=5)
+            use_proot = True
+        except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            use_proot = False
+
+        if use_proot:
+            # Use proot for filesystem redirection without root privileges
+            command_list = [
+                "proot",
+                "-r", str(rootfs),
+                "-b", f"{temp_dir}:{mountpoint}",
+                "-w", mountpoint,
+            ]
+            command_list.extend(cmd_parts)
+            command = " ".join(command_list)
+        else:
+            # Direct execution - rely on symlinks and adjusted paths
+            # Change to the appropriate working directory
+            work_dir = str(rootfs) if not model_command.strip().startswith('python') else temp_dir
+            command = f"cd {work_dir} && " + " ".join(adjusted_cmd)
+
+        LOGGER.info(f"Executing model directly ({container_runtime}): {command}")
+
+        try:
+            result = subprocess.run(
+                command,
+                shell=True,
+                check=True,
+                capture_output=True,
+                env=env,
+                cwd=temp_dir,
+                timeout=3600,  # 1 hour timeout for segmentation
+            )
+            LOGGER.info(f"Model {container_id} completed successfully")
+            LOGGER.debug(f"stdout: {result.stdout.decode()[:500]}")
+            success = True
+        except subprocess.CalledProcessError as e:
+            LOGGER.error(f"Model {container_id} failed: {e.stderr.decode()}")
+            success = False
+        except subprocess.TimeoutExpired:
+            LOGGER.error(f"Model {container_id} timed out after 1 hour")
+            success = False
+
+    elif container_runtime in ("singularity", "apptainer"):
         # ---- Singularity / Apptainer path ----
         # Resolve the SIF file
         if seg_cache_dir is not None:

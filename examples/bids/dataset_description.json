@@ -1,0 +1,24 @@
+{
+    "Name": "OncoPrep Synthetic Test Dataset",
+    "BIDSVersion": "1.9.0",
+    "DatasetType": "raw",
+    "License": "CC0",
+    "Authors": [
+        {
+            "name": "OncoPrep Synthetic Data Generator"
+        }
+    ],
+    "Acknowledgements": "Synthetic data \u2013 no real patients",
+    "HowToAcknowledge": "Please cite OncoPrep and the BIDS specification",
+    "Funding": [],
+    "EthicsApprovals": [],
+    "ReferencesAndLinks": [],
+    "DatasetLinks": {},
+    "Keywords": [
+        "neuro-oncology",
+        "MRI",
+        "synthetic"
+    ],
+    "SourceDatasets": [],
+    "ConsentLinks": []
+}
