@@ -57,6 +57,11 @@ oncoprep --fetch-templates \
 **When running on compute nodes**, use `--offline` to disable all network access:
 
 ```bash
+# If TEMPLATEFLOW_HOME is set in environment:
+export TEMPLATEFLOW_HOME=/scratch/$PROJECT/$USER/templateflow
+oncoprep /data/bids /data/output participant --offline
+
+# Or specify explicitly:
 oncoprep /data/bids /data/output participant \
   --templateflow-home /scratch/$PROJECT/$USER/templateflow \
   --offline
@@ -64,7 +69,9 @@ oncoprep /data/bids /data/output participant \
 
 The `--offline` flag sets `TEMPLATEFLOW_AUTOUPDATE=false` before any imports,
 preventing TemplateFlow from attempting downloads even when called from
-workflow nodes.
+workflow nodes. If `--templateflow-home` is not specified, OncoPrep checks
+the `TEMPLATEFLOW_HOME` environment variable, then the default cache location
+(`~/.cache/templateflow`).
 
 ## 4. Run on a compute node
 
@@ -98,7 +105,51 @@ singularity run \
   --offline
 ```
 
-## PBS job script example
+## Native (non-container) install on HPC
+
+If you installed OncoPrep into a Python virtual environment on the HPC
+rather than using a Singularity container, you **must** ensure that
+external tools (ANTs, FSL, FreeSurfer, etc.) are available in `$PATH`
+on the compute node. On NCI Gadi, for example:
+
+```bash
+module load ants           # provides ImageMath, DenoiseImage, antsRegistration, etc.
+module load fsl            # provides bet, flirt, etc. (if using FSL backends)
+source /path/to/venv/bin/activate
+```
+
+> **Tip:** Run `module avail 2>&1 | grep -i ants` to find the exact
+> module name on your system. Common names include `ants`, `ANTs`,
+> `ANTs/2.5.0`, etc.
+>
+> If no ANTs module is available, you will need to
+> [build ANTs from source](https://github.com/ANTsX/ANTs/wiki/Compiling-ANTs-on-Linux-and-Mac-OS)
+> and add the resulting `bin/` directory to your `$PATH` (e.g.
+> `export PATH=/path/to/ants-build/bin:$PATH` in your PBS script).
+
+### PBS job script (native install)
+
+```bash
+#!/bin/bash
+#PBS -l ncpus=12,mem=48GB,walltime=04:00:00,jobfs=100GB
+#PBS -l storage=gdata/$PROJECT+scratch/$PROJECT
+#PBS -l ngpus=1
+#PBS -l wd
+
+module load ants
+# module load fsl          # uncomment if using FSL backends
+source /path/to/venv/bin/activate
+
+export TEMPLATEFLOW_HOME=/scratch/$PROJECT/$USER/templateflow
+
+oncoprep /path/to/bids /path/to/output participant \
+  --participant-label sub-001 \
+  --offline \
+  --work-dir $PBS_JOBFS/work \
+  --nprocs $PBS_NCPUS
+```
+
+## PBS job script example (Singularity)
 
 ```bash
 #!/bin/bash

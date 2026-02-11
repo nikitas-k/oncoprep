@@ -36,15 +36,31 @@ def main():
         os.environ['TEMPLATEFLOW_AUTOUPDATE'] = 'false'
 
     # Handle --templateflow-home early to set cache location before imports
+    tf_home_set = False
     for i, arg in enumerate(sys.argv):
         if arg == '--templateflow-home' and i + 1 < len(sys.argv):
             tf_home = Path(sys.argv[i + 1]).resolve()
             os.environ['TEMPLATEFLOW_HOME'] = str(tf_home)
+            tf_home_set = True
             break
         elif arg.startswith('--templateflow-home='):
             tf_home = Path(arg.split('=', 1)[1]).resolve()
             os.environ['TEMPLATEFLOW_HOME'] = str(tf_home)
+            tf_home_set = True
             break
+
+    # Fallback: check if TEMPLATEFLOW_HOME already set in environment or use default
+    if not tf_home_set and 'TEMPLATEFLOW_HOME' not in os.environ:
+        # Check common default locations
+        try:
+            from platformdirs import user_cache_dir
+            default_tf_home = Path(user_cache_dir('templateflow'))
+        except ImportError:
+            # Fallback to ~/.cache/templateflow (Linux/macOS default)
+            default_tf_home = Path.home() / '.cache' / 'templateflow'
+        
+        if default_tf_home.exists() and (default_tf_home / 'tpl-MNI152NLin2009cAsym').exists():
+            os.environ['TEMPLATEFLOW_HOME'] = str(default_tf_home)
 
     opts = get_parser().parse_args()
     return build_opts(opts)
@@ -67,7 +83,7 @@ def _handle_fetch_templates() -> int:
         metavar='PATH',
         type=Path,
         default=None,
-        help='Template cache directory (default: ~/.cache/templateflow)',
+        help='Template cache directory (default: $TEMPLATEFLOW_HOME or ~/.cache/templateflow)',
     )
     parser.add_argument(
         '--output-spaces',
@@ -472,16 +488,16 @@ def get_parser():
         type=Path,
         default=None,
         help='Path to TemplateFlow template cache directory. '
-        'Overrides the TEMPLATEFLOW_HOME environment variable. '
-        'Required for offline/HPC use - pre-fetch templates on a login node '
-        'with internet access, then point to the cache on compute nodes.',
+        'If not specified, uses TEMPLATEFLOW_HOME environment variable, '
+        'or the default cache location (~/.cache/templateflow). '
+        'For HPC use, pre-fetch templates on a login node with --fetch-templates.',
     )
     g_tf.add_argument(
         '--offline',
         action='store_true',
         default=False,
         help='Disable network access for TemplateFlow. '
-        'Templates must already be cached in TEMPLATEFLOW_HOME. '
+        'Templates must already be cached (via --fetch-templates or prior use). '
         'Use this on HPC compute nodes without internet access.',
     )
     g_tf.add_argument(
