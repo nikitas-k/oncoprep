@@ -571,7 +571,7 @@ to workflows in *OncoPrep*'s documentation]\
 
     # Radiomics feature extraction workflow (optional, requires segmentation)
     if run_radiomics and run_segmentation:
-        LOGGER.info('ANAT Stage 7: Initializing radiomics feature extraction workflow (--run-radiomics=True requires --run-segmentation=True)')
+        LOGGER.info('ANAT Stage 8: Initializing radiomics feature extraction workflow (--run-radiomics=True requires --run-segmentation=True)')
         anat_radiomics_wf = init_anat_radiomics_wf(
             output_dir=str(output_dir),
             name='anat_radiomics_wf',
@@ -592,7 +592,7 @@ to workflows in *OncoPrep*'s documentation]\
 
     # MRIQC quality control workflow (optional, runs on raw BIDS data)
     if run_qc:
-        LOGGER.info('ANAT Stage 8: Initializing MRIQC quality control workflow (--run-qc)')
+        LOGGER.info('ANAT Stage 9: Initializing MRIQC quality control workflow (--run-qc)')
         mriqc_wf = init_mriqc_wf(
             bids_dir=bids_dir,
             output_dir=output_dir,
