@@ -50,8 +50,8 @@ except ImportError:
     pass
 
 try:
-    from .radiomics import PyRadiomicsFeatureExtraction
-    __all__.append('PyRadiomicsFeatureExtraction')
+    from .radiomics import HistogramNormalization, PyRadiomicsFeatureExtraction
+    __all__.extend(['HistogramNormalization', 'PyRadiomicsFeatureExtraction'])
 except ImportError:
     pass
 

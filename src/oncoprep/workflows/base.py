@@ -575,6 +575,7 @@ to workflows in *OncoPrep*'s documentation]\
             ]),
             (anat_preproc_wf, anat_radiomics_wf, [
                 ('outputnode.t1w_preproc', 'inputnode.t1w_preproc'),
+                ('outputnode.t1w_mask', 'inputnode.brain_mask'),
             ]),
             (anat_seg_wf, anat_radiomics_wf, [
                 ('outputnode.tumor_seg_old', 'inputnode.tumor_seg'),

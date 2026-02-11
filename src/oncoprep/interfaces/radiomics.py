@@ -65,6 +65,199 @@ COMPOSITE_REGIONS = {
 
 
 # ---------------------------------------------------------------------------
+# Histogram Normalization Interface
+# ---------------------------------------------------------------------------
+
+class _HistogramNormInputSpec(BaseInterfaceInputSpec):
+    in_file = File(exists=True, mandatory=True,
+                   desc='Input image to normalize')
+    in_mask = File(exists=True, mandatory=True,
+                   desc='Brain or tumor mask defining the ROI for statistics')
+    method = traits.Enum(
+        'zscore', 'nyul', 'whitestripe',
+        usedefault=True,
+        desc='Normalization method: zscore (default), nyul, or whitestripe',
+    )
+    percentile_lower = traits.Float(
+        1.0, usedefault=True,
+        desc='Lower percentile for Winsorization / outlier clipping',
+    )
+    percentile_upper = traits.Float(
+        99.0, usedefault=True,
+        desc='Upper percentile for Winsorization / outlier clipping',
+    )
+    target_mean = traits.Float(
+        0.0, usedefault=True,
+        desc='Target mean for z-score normalization (default: 0)',
+    )
+    target_std = traits.Float(
+        1.0, usedefault=True,
+        desc='Target standard deviation for z-score normalization (default: 1)',
+    )
+
+
+class _HistogramNormOutputSpec(TraitedSpec):
+    out_file = File(exists=True,
+                    desc='Intensity-normalized image')
+
+
+class HistogramNormalization(SimpleInterface):
+    """Brain-masked intensity normalization for radiomics reproducibility.
+
+    Standardizes image intensities prior to radiomics feature extraction
+    following IBSI (Image Biomarker Standardisation Initiative) best practices.
+    This reduces scanner- and protocol-dependent intensity variation that
+    confounds texture and first-order features.
+
+    Three methods are available:
+
+    ``zscore`` (default)
+        Compute mean and standard deviation within the brain mask, then
+        transform: ``(x − μ) / σ × target_std + target_mean``.  Outlier
+        intensities are Winsorized at ``percentile_lower`` and
+        ``percentile_upper`` before computing statistics.  This is the
+        simplest and most widely used approach in the radiomics literature
+        [@shinohara2014; @um2019].
+
+    ``nyul``
+        Nyul–Udupa piecewise-linear histogram standardization.  Maps
+        percentile landmarks of the brain-masked histogram to a standard
+        scale.  Requires no training data when used subject-by-subject
+        (internal landmark mapping).
+
+    ``whitestripe``
+        Estimates normal-appearing white matter peak via smoothed
+        histogram mode and normalizes to that peak.  Robust for T1w images.
+    """
+
+    input_spec = _HistogramNormInputSpec
+    output_spec = _HistogramNormOutputSpec
+
+    def _run_interface(self, runtime):
+        import nibabel as nib
+        import numpy as np
+
+        img = nib.load(self.inputs.in_file)
+        data = np.array(img.get_fdata(), dtype=np.float64)
+
+        mask_img = nib.load(self.inputs.in_mask)
+        mask = np.asarray(mask_img.dataobj).astype(bool)
+
+        # Ensure shapes match; if mask is multi-label (seg), binarise
+        if mask.shape != data.shape:
+            # Resample not attempted — shapes must match from preprocessing
+            raise ValueError(
+                f'Image shape {data.shape} does not match mask shape '
+                f'{mask.shape}. Ensure inputs are in the same space.'
+            )
+        if mask.max() > 1:
+            mask = mask > 0
+
+        method = self.inputs.method
+
+        if method == 'zscore':
+            data = self._zscore_normalize(data, mask)
+        elif method == 'nyul':
+            data = self._nyul_normalize(data, mask)
+        elif method == 'whitestripe':
+            data = self._whitestripe_normalize(data, mask)
+
+        out_img = nib.Nifti1Image(data.astype(np.float32),
+                                  img.affine, img.header)
+        out_path = os.path.abspath('normalized.nii.gz')
+        nib.save(out_img, out_path)
+        self._results['out_file'] = out_path
+
+        return runtime
+
+    def _zscore_normalize(self, data, mask):
+        """Z-score normalization with Winsorization."""
+        import numpy as np
+
+        brain_vals = data[mask]
+        if brain_vals.size == 0:
+            return data
+
+        plow = np.percentile(brain_vals, self.inputs.percentile_lower)
+        phigh = np.percentile(brain_vals, self.inputs.percentile_upper)
+
+        # Winsorize to remove outliers before computing statistics
+        clipped = np.clip(brain_vals, plow, phigh)
+        mu = clipped.mean()
+        sigma = clipped.std()
+
+        if sigma < 1e-8:
+            return data
+
+        # Normalize entire volume (not just brain)
+        normed = (data - mu) / sigma
+        normed = normed * self.inputs.target_std + self.inputs.target_mean
+
+        # Zero out non-brain voxels
+        normed[~mask] = 0.0
+        return normed
+
+    def _nyul_normalize(self, data, mask):
+        """Nyul–Udupa piecewise-linear histogram standardization.
+
+        Uses internal landmarks (deciles of the brain-masked histogram)
+        and maps them to a standard scale [0, 100].
+        """
+        import numpy as np
+
+        brain_vals = data[mask]
+        if brain_vals.size == 0:
+            return data
+
+        # Compute decile landmarks from the input histogram
+        landmarks_pct = np.arange(0, 101, 10)  # 0, 10, 20, ..., 100
+        src_landmarks = np.percentile(brain_vals, landmarks_pct)
+        tgt_landmarks = landmarks_pct.astype(np.float64)  # Map to [0, 100]
+
+        # Piecewise-linear mapping
+        normed = np.interp(data, src_landmarks, tgt_landmarks)
+        normed[~mask] = 0.0
+        return normed
+
+    def _whitestripe_normalize(self, data, mask):
+        """WhiteStripe-like normalization using histogram mode estimation.
+
+        Estimates the dominant tissue peak (typically WM for T1w) from a
+        smoothed histogram of brain-masked intensities, then normalizes
+        the entire volume so that peak equals 1.0.
+        """
+        import numpy as np
+
+        brain_vals = data[mask]
+        if brain_vals.size == 0:
+            return data
+
+        # Smoothed histogram for mode estimation
+        plow = np.percentile(brain_vals, self.inputs.percentile_lower)
+        phigh = np.percentile(brain_vals, self.inputs.percentile_upper)
+        clipped = brain_vals[(brain_vals >= plow) & (brain_vals <= phigh)]
+
+        n_bins = min(256, max(64, int(np.sqrt(clipped.size))))
+        hist, bin_edges = np.histogram(clipped, bins=n_bins)
+
+        # Simple smoothing with uniform kernel
+        kernel_size = max(3, n_bins // 20)
+        kernel = np.ones(kernel_size) / kernel_size
+        smoothed = np.convolve(hist.astype(float), kernel, mode='same')
+
+        # Mode = bin centre of maximum count
+        mode_idx = np.argmax(smoothed)
+        mode_val = (bin_edges[mode_idx] + bin_edges[mode_idx + 1]) / 2.0
+
+        if abs(mode_val) < 1e-8:
+            return data
+
+        normed = data / mode_val
+        normed[~mask] = 0.0
+        return normed
+
+
+# ---------------------------------------------------------------------------
 # Input / Output Specs
 # ---------------------------------------------------------------------------
 

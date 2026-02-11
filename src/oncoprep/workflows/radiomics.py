@@ -108,6 +108,7 @@ def init_anat_radiomics_wf(
         Nipype workflow for radiomics extraction.
     """
     from ..interfaces.radiomics import (
+        HistogramNormalization,
         PyRadiomicsFeatureExtraction,
         BRATS_OLD_LABEL_MAP,
         BRATS_OLD_LABEL_NAMES,
@@ -117,12 +118,15 @@ def init_anat_radiomics_wf(
 
     workflow = Workflow(name=name)
     workflow.__desc__ = """\
-Radiomics features were extracted from the preprocessed T1-weighted image
-using *PyRadiomics* [@pyradiomics]. For each tumor sub-region defined by the
-BraTS segmentation labels (necrotic core, peritumoral edema, enhancing tumor,
-resection cavity) and composite regions (whole tumor, tumor core), shape-based,
-first-order intensity, and texture features (GLCM, GLRLM, GLSZM, GLDM, NGTDM)
-were computed.
+Prior to feature extraction, the preprocessed T1-weighted image was
+intensity-normalised using brain-masked z-score standardisation with
+Winsorisation at the 1st and 99th percentiles, following IBSI best-practice
+recommendations for reproducible radiomics [@shinohara2014; @um2019].
+Radiomics features were then extracted using *PyRadiomics* [@pyradiomics].
+For each tumor sub-region defined by the BraTS segmentation labels (necrotic
+core, peritumoral edema, enhancing tumor, resection cavity) and composite
+regions (whole tumor, tumor core), shape-based, first-order intensity, and
+texture features (GLCM, GLRLM, GLSZM, GLDM, NGTDM) were computed.
 """
 
     inputnode = pe.Node(
@@ -131,6 +135,7 @@ were computed.
                 'source_file',   # BIDS source for derivatives naming
                 't1w_preproc',   # Preprocessed T1w image
                 'tumor_seg',     # Multi-label tumor segmentation
+                'brain_mask',    # Brain mask for histogram normalization
             ],
         ),
         name='inputnode',
@@ -144,6 +149,17 @@ were computed.
             ],
         ),
         name='outputnode',
+    )
+
+    # --- Histogram normalization (IBSI best-practice) ---
+    hist_norm = pe.Node(
+        HistogramNormalization(
+            method='zscore',
+            percentile_lower=1.0,
+            percentile_upper=99.0,
+        ),
+        name='hist_norm',
+        mem_gb=2,
     )
 
     # --- PyRadiomics extraction node ---
@@ -190,9 +206,16 @@ were computed.
 
     # --- Connections ---
     workflow.connect([
-        # Image + mask → extraction
-        (inputnode, radiomics_extract, [
+        # Image + brain mask → histogram normalization
+        (inputnode, hist_norm, [
             ('t1w_preproc', 'in_file'),
+            ('brain_mask', 'in_mask'),
+        ]),
+        # Normalized image + tumor seg → extraction
+        (hist_norm, radiomics_extract, [
+            ('out_file', 'in_file'),
+        ]),
+        (inputnode, radiomics_extract, [
             ('tumor_seg', 'in_mask'),
         ]),
         # Extraction → outputs
@@ -292,6 +315,7 @@ def init_multimodal_radiomics_wf(
         Nipype workflow.
     """
     from ..interfaces.radiomics import (
+        HistogramNormalization,
         PyRadiomicsFeatureExtraction,
         BRATS_OLD_LABEL_MAP,
         BRATS_OLD_LABEL_NAMES,
@@ -305,11 +329,14 @@ def init_multimodal_radiomics_wf(
     workflow = Workflow(name=name)
     workflow.__desc__ = """\
 Multi-modal radiomics features were extracted from preprocessed {mods}
-images using *PyRadiomics* [@pyradiomics]. Features were computed for each
-tumor sub-region and composite region using the BraTS segmentation mask.
+images using *PyRadiomics* [@pyradiomics]. Each modality was first
+intensity-normalised using brain-masked z-score standardisation with
+Winsorisation at the 1st and 99th percentiles, following IBSI best-practice
+recommendations for reproducible radiomics. Features were then computed for
+each tumor sub-region and composite region using the BraTS segmentation mask.
 """.format(mods=', '.join(m.upper() for m in modalities))
 
-    input_fields = ['source_file', 'tumor_seg']
+    input_fields = ['source_file', 'tumor_seg', 'brain_mask']
     for mod in modalities:
         input_fields.append(f'{mod}_preproc')
 
@@ -322,9 +349,20 @@ tumor sub-region and composite region using the BraTS segmentation mask.
         name='outputnode',
     )
 
-    # Create one extraction node per modality
+    # Create one normalization + extraction node per modality
     extract_nodes = {}
     for mod in modalities:
+        # Histogram normalization per modality
+        norm_node = pe.Node(
+            HistogramNormalization(
+                method='zscore',
+                percentile_lower=1.0,
+                percentile_upper=99.0,
+            ),
+            name=f'hist_norm_{mod}',
+            mem_gb=2,
+        )
+
         node = pe.Node(
             PyRadiomicsFeatureExtraction(
                 label_map=BRATS_OLD_LABEL_MAP,
@@ -343,8 +381,16 @@ tumor sub-region and composite region using the BraTS segmentation mask.
         )
         extract_nodes[mod] = node
         workflow.connect([
-            (inputnode, node, [
+            # Image + brain mask → normalization
+            (inputnode, norm_node, [
                 (f'{mod}_preproc', 'in_file'),
+                ('brain_mask', 'in_mask'),
+            ]),
+            # Normalized image + tumor seg → extraction
+            (norm_node, node, [
+                ('out_file', 'in_file'),
+            ]),
+            (inputnode, node, [
                 ('tumor_seg', 'in_mask'),
             ]),
         ])
