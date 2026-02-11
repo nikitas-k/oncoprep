@@ -418,17 +418,10 @@ def _cmd_extract(args: argparse.Namespace) -> int:
     IMPORTANT: This command should be run on an HPC LOGIN NODE where
     singularity/apptainer is available, NOT inside a container.
     """
-    gpu = not args.cpu_only
-    cpu = not args.gpu_only
-    models = _load_model_configs(gpu=gpu, cpu=cpu)
-
     cache_dir = Path(args.cache_dir).resolve()
     if not cache_dir.is_dir():
         print(f"Cache directory does not exist: {cache_dir}")
         return 1
-
-    if args.models:
-        models = {k: v for k, v in models.items() if k in args.models}
 
     # Import extraction function
     try:
@@ -478,9 +471,62 @@ def _cmd_extract(args: argparse.Namespace) -> int:
         return 1
 
     extraction_method = sing_cmd if sing_cmd else "unsquashfs"
-    print(f"Using extraction method: {extraction_method}\n")
+    print(f"Using extraction method: {extraction_method}")
 
-    total = len(models)
+    # Build list of SIF files to extract
+    # Option 1: --all flag - extract all .sif files found in cache_dir
+    # Option 2: Use config + optional --models filter
+    sif_files = list(cache_dir.glob("*.sif"))
+
+    if args.all:
+        # Extract all SIF files found
+        to_extract = []
+        for sif_path in sif_files:
+            # Convert SIF filename back to a pseudo image_id for directory naming
+            # e.g., fabianisensee_isen2018.sif -> fabianisensee/isen2018
+            stem = sif_path.stem  # Remove .sif
+            # Heuristic: first underscore is the / separator
+            parts = stem.split("_", 1)
+            if len(parts) == 2:
+                image_id = f"{parts[0]}/{parts[1]}"
+            else:
+                image_id = stem
+            to_extract.append((stem, image_id, sif_path))
+    else:
+        # Use config files to determine which models to extract
+        gpu = not args.cpu_only
+        cpu = not args.gpu_only
+        models = _load_model_configs(gpu=gpu, cpu=cpu)
+
+        if args.models:
+            models = {k: v for k, v in models.items() if k in args.models}
+
+        if not models:
+            print(f"\nNo models found in configuration.")
+            print(f"Found {len(sif_files)} SIF files in {cache_dir}:")
+            for sif in sorted(sif_files)[:10]:
+                print(f"  - {sif.name}")
+            if len(sif_files) > 10:
+                print(f"  ... and {len(sif_files) - 10} more")
+            print(f"\nTry using --all to extract all SIF files regardless of config.")
+            return 1
+
+        to_extract = []
+        for key, cfg in sorted(models.items()):
+            image_id = cfg.get("id")
+            if not image_id:
+                continue
+            sif_name = image_id.replace("/", "_").replace(":", "_") + ".sif"
+            sif_path = cache_dir / sif_name
+            if sif_path.is_file():
+                to_extract.append((key, image_id, sif_path))
+
+    if not to_extract:
+        print(f"\nNo matching SIF files found in {cache_dir}")
+        print(f"SIF files present: {[s.name for s in sif_files[:5]]}{'...' if len(sif_files) > 5 else ''}")
+        return 1
+
+    total = len(to_extract)
     success = 0
     failed = 0
     skipped = 0
@@ -488,21 +534,7 @@ def _cmd_extract(args: argparse.Namespace) -> int:
     print(f"\nExtracting {total} models for direct execution...")
     print(f"Cache directory: {cache_dir}\n")
 
-    for i, (key, cfg) in enumerate(sorted(models.items()), 1):
-        image_id = cfg.get("id")
-        if not image_id:
-            print(f"  [{i}/{total}] {key}: no image ID, skipping")
-            skipped += 1
-            continue
-
-        sif_name = image_id.replace("/", "_").replace(":", "_") + ".sif"
-        sif_path = cache_dir / sif_name
-
-        if not sif_path.is_file():
-            print(f"  [{i}/{total}] {key}: SIF not found ({sif_name}), skipping")
-            skipped += 1
-            continue
-
+    for i, (key, image_id, sif_path) in enumerate(to_extract, 1):
         model_dir = _extracted_model_dir(image_id, cache_dir)
         rootfs = model_dir / "rootfs"
 
@@ -511,7 +543,7 @@ def _cmd_extract(args: argparse.Namespace) -> int:
             skipped += 1
             continue
 
-        print(f"  [{i}/{total}] {key}: extracting {sif_name} ...")
+        print(f"  [{i}/{total}] {key}: extracting {sif_path.name} ...")
         if _extract_sif_to_dir(sif_path, model_dir, force=args.force):
             print(f"           → {model_dir.name}/rootfs/ ✓")
             success += 1
@@ -625,7 +657,7 @@ def get_parser() -> argparse.ArgumentParser:
             "Singularity container on HPC where nested container invocation is\n"
             "not supported.\n\n"
             "Examples:\n"
-            "  oncoprep-models extract --cache-dir /scratch/$USER/seg_cache\n"
+            "  oncoprep-models extract --cache-dir /scratch/$USER/seg_cache --all\n"
             "  oncoprep-models extract --cache-dir ./cache --models mic-dkfz econib\n"
         ),
     )
@@ -635,13 +667,18 @@ def get_parser() -> argparse.ArgumentParser:
         required=True,
         help="Directory containing SIF files to extract",
     )
-    p_extract.add_argument("--gpu-only", action="store_true", help="Extract only GPU models")
-    p_extract.add_argument("--cpu-only", action="store_true", help="Extract only CPU models")
+    p_extract.add_argument(
+        "--all", "-a",
+        action="store_true",
+        help="Extract ALL .sif files found in cache-dir (ignores config)",
+    )
+    p_extract.add_argument("--gpu-only", action="store_true", help="Extract only GPU models (from config)")
+    p_extract.add_argument("--cpu-only", action="store_true", help="Extract only CPU models (from config)")
     p_extract.add_argument(
         "--models", "-m",
         nargs="+",
         metavar="KEY",
-        help="Extract only specific models (by key name)",
+        help="Extract only specific models (by key name from config)",
     )
     p_extract.add_argument(
         "--force", "-f",
