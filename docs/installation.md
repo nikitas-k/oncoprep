@@ -3,8 +3,15 @@
 ## Requirements
 
 - Python 3.9 or later
+- [ANTs](https://github.com/ANTsX/ANTs) (provides `DenoiseImage`, `ImageMath`, `antsRegistration`, etc.)
 - [Docker](https://docs.docker.com/get-docker/) (for tumor segmentation)
 - GPU with CUDA support (optional — required for ensemble segmentation mode)
+
+ANTs is a **required** system dependency for anatomical preprocessing
+(denoising, skull-stripping, registration). Install it via your system
+package manager, an HPC module (`module load ants`), or
+[build from source](https://github.com/ANTsX/ANTs/wiki/Compiling-ANTs-on-Linux-and-Mac-OS).
+Ensure the ANTs `bin/` directory is on your `$PATH`.
 
 ## Quick install
 
