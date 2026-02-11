@@ -222,7 +222,7 @@ def detect_container_runtime(
 
 
 # ---------------------------------------------------------------------------
-Segmentation model cache helpers
+# Segmentation model cache helpers
 # ---------------------------------------------------------------------------
 
 def _resolve_seg_cache_dir() -> Optional[Path]:
