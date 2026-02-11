@@ -11,9 +11,8 @@ import warnings
 from argparse import ArgumentParser, RawTextHelpFormatter
 from multiprocessing import Manager, Process, set_start_method
 from pathlib import Path
-from shutil import copyfile
-from subprocess import CalledProcessError, TimeoutExpired, check_call
 from time import strftime
+from typing import List, Optional
 
 
 def main():
@@ -27,8 +26,121 @@ def main():
             print("oncoprep 0.1.0")
         return
 
+    # Handle --fetch-templates early (doesn't require positional args)
+    if '--fetch-templates' in sys.argv:
+        return _handle_fetch_templates()
+
     opts = get_parser().parse_args()
     return build_opts(opts)
+
+
+def _handle_fetch_templates() -> int:
+    """Handle --fetch-templates: download templates and exit."""
+    # Parse only the relevant arguments
+    parser = ArgumentParser(
+        description='Fetch TemplateFlow templates for offline HPC use',
+        formatter_class=RawTextHelpFormatter,
+    )
+    parser.add_argument(
+        '--fetch-templates',
+        action='store_true',
+        required=True,
+    )
+    parser.add_argument(
+        '--templateflow-home',
+        metavar='PATH',
+        type=Path,
+        default=None,
+        help='Template cache directory (default: ~/.cache/templateflow)',
+    )
+    parser.add_argument(
+        '--output-spaces',
+        nargs='*',
+        default=['MNI152NLin2009cAsym'],
+        help='Templates for output spaces (default: MNI152NLin2009cAsym)',
+    )
+    parser.add_argument(
+        '--skull-strip-template',
+        default='OASIS30ANTs',
+        help='Skull-stripping template (default: OASIS30ANTs)',
+    )
+    parser.add_argument(
+        '--sloppy',
+        action='store_true',
+        default=False,
+        help='Fetch only res-02 templates (faster)',
+    )
+
+    args = parser.parse_args()
+
+    # Set TEMPLATEFLOW_HOME if specified
+    if args.templateflow_home is not None:
+        tf_home = Path(args.templateflow_home).resolve()
+        tf_home.mkdir(parents=True, exist_ok=True)
+        os.environ['TEMPLATEFLOW_HOME'] = str(tf_home)
+        print(f'TemplateFlow home: {tf_home}')
+    else:
+        tf_home = os.environ.get('TEMPLATEFLOW_HOME', '~/.cache/templateflow')
+        print(f'TemplateFlow home: {tf_home}')
+
+    # Collect templates to fetch
+    templates = set()
+    for space in args.output_spaces:
+        template_name = space.split(':')[0].strip()
+        if template_name:
+            templates.add(template_name)
+    if args.skull_strip_template:
+        templates.add(args.skull_strip_template)
+
+    print(f'Fetching templates: {sorted(templates)}')
+
+    try:
+        from templateflow import api as tf
+    except ImportError:
+        print('ERROR: templateflow package not installed.', file=sys.stderr)
+        print('Install with: pip install templateflow', file=sys.stderr)
+        return 1
+
+    resolutions = [2] if args.sloppy else [1, 2]
+    success_count = 0
+    error_count = 0
+
+    for template in sorted(templates):
+        for res in resolutions:
+            # T1w
+            try:
+                t1w = tf.get(template, desc=None, suffix='T1w', resolution=res)
+                if t1w:
+                    print(f'  ✓ {template} res-{res:02d} T1w')
+                    success_count += 1
+            except Exception as e:
+                print(f'  ✗ {template} res-{res:02d} T1w: {e}')
+                error_count += 1
+
+            # Brain mask
+            try:
+                mask = tf.get(template, desc='brain', suffix='mask', resolution=res)
+                if not mask:
+                    mask = tf.get(template, label='brain', suffix='mask', resolution=res)
+                if mask:
+                    print(f'  ✓ {template} res-{res:02d} mask')
+                    success_count += 1
+            except Exception as e:
+                print(f'  ✗ {template} res-{res:02d} mask: {e}')
+                error_count += 1
+
+            # T2w (optional)
+            try:
+                t2w = tf.get(template, desc=None, suffix='T2w', resolution=res)
+                if t2w:
+                    print(f'  ✓ {template} res-{res:02d} T2w')
+                    success_count += 1
+            except Exception:
+                pass  # T2w is optional
+
+    print(f'\n{success_count} files fetched, {error_count} errors.')
+    print('\\nTemplates cached. Use --templateflow-home and --offline on compute nodes.')
+    return 0 if error_count == 0 else 1
 
 
 def get_parser():
@@ -336,6 +448,36 @@ def get_parser():
         help='Use low-quality tools for speed - TESTING ONLY',
     )
     
+    # TemplateFlow options
+    g_tf = parser.add_argument_group('TemplateFlow options')
+    g_tf.add_argument(
+        '--templateflow-home',
+        metavar='PATH',
+        type=Path,
+        default=None,
+        help='Path to TemplateFlow template cache directory. '
+        'Overrides the TEMPLATEFLOW_HOME environment variable. '
+        'Required for offline/HPC use - pre-fetch templates on a login node '
+        'with internet access, then point to the cache on compute nodes.',
+    )
+    g_tf.add_argument(
+        '--offline',
+        action='store_true',
+        default=False,
+        help='Disable network access for TemplateFlow. '
+        'Templates must already be cached in TEMPLATEFLOW_HOME. '
+        'Use this on HPC compute nodes without internet access.',
+    )
+    g_tf.add_argument(
+        '--fetch-templates',
+        action='store_true',
+        default=False,
+        help='Download TemplateFlow templates and exit. '
+        'Use on a login node with internet access to pre-cache templates '
+        'for offline HPC use. Fetches templates for --output-spaces and '
+        '--skull-strip-template.',
+    )
+    
     return parser
 
 
@@ -571,6 +713,16 @@ def build_workflow(opts, retval):
         ),
     )
     
+    # Ensure TemplateFlow templates are available
+    _ensure_templateflow_templates(
+        output_spaces=opts.output_spaces,
+        skull_strip_template=opts.skull_strip_template,
+        templateflow_home=opts.templateflow_home,
+        offline=opts.offline,
+        sloppy=opts.sloppy,
+        logger=logger,
+    )
+
     # Build top-level workflow for multi-subject processing
     retval['workflow'] = init_oncoprep_wf(
         output_dir=output_dir,
@@ -626,6 +778,120 @@ def _pprint_subses(subses: list) -> str:
             output.append(f'sub-{subject} ses-{session}')
     
     return ', '.join(output)
+
+
+def _ensure_templateflow_templates(
+    output_spaces: List[str],
+    skull_strip_template: str,
+    templateflow_home: Optional[Path] = None,
+    offline: bool = False,
+    sloppy: bool = False,
+    logger: Optional[logging.Logger] = None,
+) -> None:
+    """
+    Ensure required TemplateFlow templates are available.
+
+    This function pre-fetches templates before workflow construction to avoid
+    network access during parallel execution (which can fail on HPC compute
+    nodes without internet access).
+
+    Parameters
+    ----------
+    output_spaces : list
+        List of output space names (e.g., ['MNI152NLin2009cAsym'])
+    skull_strip_template : str
+        Name of skull-stripping template (e.g., 'OASIS30ANTs')
+    templateflow_home : Path, optional
+        Override TEMPLATEFLOW_HOME environment variable
+    offline : bool
+        If True, skip fetching and assume templates are already cached
+    sloppy : bool
+        If True, use lower resolution templates (res-02)
+    logger : logging.Logger, optional
+        Logger instance for status messages
+    """
+    if logger is None:
+        logger = logging.getLogger('nipype.workflow')
+
+    # Set TEMPLATEFLOW_HOME if specified
+    if templateflow_home is not None:
+        tf_home = Path(templateflow_home).resolve()
+        tf_home.mkdir(parents=True, exist_ok=True)
+        os.environ['TEMPLATEFLOW_HOME'] = str(tf_home)
+        logger.info(f'TemplateFlow home set to: {tf_home}')
+
+    if offline:
+        # In offline mode, just verify TEMPLATEFLOW_HOME is set
+        tf_home = os.environ.get('TEMPLATEFLOW_HOME')
+        if not tf_home:
+            logger.warning(
+                '--offline specified but TEMPLATEFLOW_HOME is not set. '
+                'Templates may not be found.'
+            )
+        else:
+            logger.info(f'Offline mode: using cached templates from {tf_home}')
+        return
+
+    # Collect unique templates to fetch
+    templates_to_fetch = set()
+
+    # Add output spaces
+    for space in output_spaces:
+        # Parse space string (e.g., 'MNI152NLin2009cAsym:res-1')
+        template_name = space.split(':')[0].strip()
+        if template_name:
+            templates_to_fetch.add(template_name)
+
+    # Add skull-strip template
+    if skull_strip_template:
+        templates_to_fetch.add(skull_strip_template)
+
+    if not templates_to_fetch:
+        return
+
+    logger.info(f'Ensuring TemplateFlow templates are cached: {sorted(templates_to_fetch)}')
+
+    # Import templateflow (sets up TEMPLATEFLOW_HOME)
+    try:
+        from templateflow import api as tf
+    except ImportError:
+        logger.warning(
+            'templateflow package not installed. '
+            'Templates will be fetched on-demand during workflow execution.'
+        )
+        return
+
+    resolutions = [2] if sloppy else [1, 2]
+
+    for template in templates_to_fetch:
+        for res in resolutions:
+            try:
+                # Fetch T1w template
+                t1w = tf.get(template, desc=None, suffix='T1w', resolution=res)
+                if t1w:
+                    logger.debug(f'Cached: {template} res-{res:02d} T1w')
+            except Exception as e:
+                logger.debug(f'Could not fetch {template} res-{res:02d} T1w: {e}')
+
+            try:
+                # Fetch brain mask
+                mask = tf.get(template, desc='brain', suffix='mask', resolution=res)
+                if not mask:
+                    mask = tf.get(template, label='brain', suffix='mask', resolution=res)
+                if mask:
+                    logger.debug(f'Cached: {template} res-{res:02d} mask')
+            except Exception as e:
+                logger.debug(f'Could not fetch {template} res-{res:02d} mask: {e}')
+
+            try:
+                # Fetch T2w if available (optional)
+                t2w = tf.get(template, desc=None, suffix='T2w', resolution=res)
+                if t2w:
+                    logger.debug(f'Cached: {template} res-{res:02d} T2w')
+            except Exception:
+                pass  # T2w is optional
+
+    logger.info('TemplateFlow templates ready')
 
 
 if __name__ == '__main__':

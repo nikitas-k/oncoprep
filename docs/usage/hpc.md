@@ -34,7 +34,35 @@ oncoprep-models pull -o /scratch/$PROJECT/$USER/seg_cache \
   --runtime singularity
 ```
 
-## 3. Run on a compute node
+## 3. Pre-download TemplateFlow templates
+
+HPC compute nodes typically lack internet access. TemplateFlow templates
+must be pre-cached on a login node before submitting jobs.
+
+**On the login node (with internet access):**
+
+```bash
+# Fetch templates to a shared cache directory
+oncoprep --fetch-templates \
+  --templateflow-home /scratch/$PROJECT/$USER/templateflow
+
+# Or with custom output spaces
+oncoprep --fetch-templates \
+  --templateflow-home /scratch/$PROJECT/$USER/templateflow \
+  --output-spaces MNI152NLin2009cAsym MNIPediatricAsym \
+  --skull-strip-template OASIS30ANTs
+```
+
+**When running on compute nodes**, always set `--templateflow-home` and use
+`--offline` to prevent network access attempts:
+
+```bash
+oncoprep /data/bids /data/output participant \
+  --templateflow-home /scratch/$PROJECT/$USER/templateflow \
+  --offline
+```
+
+## 4. Run on a compute node
 
 ### GPU mode
 
@@ -46,7 +74,9 @@ singularity run --nv \
   --participant-label sub-001 \
   --run-segmentation \
   --container-runtime singularity \
-  --seg-cache-dir /seg_cache
+  --seg-cache-dir /seg_cache \
+  --templateflow-home /scratch/$PROJECT/$USER/templateflow \
+  --offline
 ```
 
 ### CPU-only (single model)
@@ -59,7 +89,9 @@ singularity run \
   --participant-label sub-001 \
   --run-segmentation --default-seg \
   --container-runtime singularity \
-  --seg-cache-dir /seg_cache
+  --seg-cache-dir /seg_cache \
+  --templateflow-home /scratch/$PROJECT/$USER/templateflow \
+  --offline
 ```
 
 ## PBS job script example
@@ -74,9 +106,11 @@ singularity run \
 module load singularity
 
 SEG_CACHE=/scratch/$PROJECT/$USER/seg_cache
+TEMPLATEFLOW_HOME=/scratch/$PROJECT/$USER/templateflow
 
 singularity run --nv \
   --bind $SEG_CACHE:/seg_cache \
+  --bind $TEMPLATEFLOW_HOME:/templateflow \
   --bind /scratch/$PROJECT/$USER/bids:/data/bids:ro \
   --bind /scratch/$PROJECT/$USER/bids/derivatives:/data/bids/derivatives \
   --bind $PBS_JOBFS:/work \
@@ -86,6 +120,8 @@ singularity run --nv \
   --run-segmentation \
   --container-runtime singularity \
   --seg-cache-dir /seg_cache \
+  --templateflow-home /templateflow \
+  --offline \
   --work-dir /work
 ```
 
@@ -103,9 +139,11 @@ singularity run --nv \
 module load singularity
 
 SEG_CACHE=/scratch/$USER/seg_cache
+TEMPLATEFLOW_HOME=/scratch/$USER/templateflow
 
 singularity run --nv \
   --bind $SEG_CACHE:/seg_cache \
+  --bind $TEMPLATEFLOW_HOME:/templateflow \
   --bind /scratch/$USER/bids:/data/bids:ro \
   --bind /scratch/$USER/derivatives:/data/derivatives \
   --bind $TMPDIR:/work \
@@ -115,6 +153,8 @@ singularity run --nv \
   --run-segmentation \
   --container-runtime singularity \
   --seg-cache-dir /seg_cache \
+  --templateflow-home /templateflow \
+  --offline \
   --work-dir /work \
   --nprocs $SLURM_CPUS_PER_TASK
 ```
