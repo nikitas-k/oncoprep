@@ -404,11 +404,36 @@ def _run_mriqc_participant(
         subprocess.run(cmd, check=True, capture_output=True, text=True)
     except subprocess.CalledProcessError as exc:
         import warnings
-        warnings.warn(
-            f'MRIQC participant-level failed for sub-{sub_id}: '
-            f'{exc.stderr[:500] if exc.stderr else exc}',
-            RuntimeWarning,
-        )
+        # Segfaults (signal 11) produce returncode -11 on Unix
+        if exc.returncode and exc.returncode < 0:
+            import signal
+            try:
+                sig_name = signal.Signals(-exc.returncode).name
+            except (ValueError, AttributeError):
+                sig_name = f'signal {-exc.returncode}'
+            warnings.warn(
+                f'MRIQC participant-level crashed with {sig_name} for sub-{sub_id}. '
+                f'This is often caused by a Python/SQLAlchemy version incompatibility. '
+                f'Try upgrading Python to 3.10+ or pinning mriqc<24. '
+                f'Command: {" ".join(cmd)}',
+                RuntimeWarning,
+            )
+        else:
+            # Show the TAIL of stderr — argparse errors appear after the
+            # usage block, so the last ~300 chars are most informative.
+            if exc.stderr:
+                stderr_tail = exc.stderr.strip().splitlines()
+                # Grab last 10 lines max
+                stderr_msg = '\n'.join(stderr_tail[-10:])
+            else:
+                stderr_msg = str(exc)
+            warnings.warn(
+                f'MRIQC participant-level failed for sub-{sub_id} '
+                f'(exit code {exc.returncode}).\n'
+                f'Command: {" ".join(cmd)}\n'
+                f'Error: {stderr_msg}',
+                RuntimeWarning,
+            )
     except FileNotFoundError:
         raise FileNotFoundError(
             'MRIQC executable not found on PATH. '

@@ -571,6 +571,18 @@ to workflows in *OncoPrep*'s documentation]\
 
     # Radiomics feature extraction workflow (optional, requires segmentation)
     if run_radiomics and run_segmentation:
+        try:
+            import radiomics  # noqa: F401
+        except ImportError:
+            LOGGER.warning(
+                'pyradiomics is not installed — skipping radiomics feature extraction. '
+                'Install with: pip install pyradiomics  '
+                '(Note: pyradiomics 3.0.1 requires Python <3.12; '
+                'for 3.12+ install from git: pip install git+https://github.com/AIM-Harvard/pyradiomics.git)'
+            )
+            run_radiomics = False
+
+    if run_radiomics and run_segmentation:
         LOGGER.info('ANAT Stage 8: Initializing radiomics feature extraction workflow (--run-radiomics=True requires --run-segmentation=True)')
         anat_radiomics_wf = init_anat_radiomics_wf(
             output_dir=str(output_dir),

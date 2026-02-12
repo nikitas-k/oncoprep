@@ -3,11 +3,27 @@
 """OncoPrep interfaces and wrappers."""
 
 try:
-    from niworkflows.interfaces.bids import DerivativesDataSink as _NiworkflowsDerivativesDataSink
-    
+    from niworkflows.interfaces.bids import (
+        BIDS_DERIV_PATTERNS,
+        DerivativesDataSink as _NiworkflowsDerivativesDataSink,
+    )
+
+    # Custom path patterns for non-standard BIDS suffixes (e.g. "features")
+    _ONCOPREP_EXTRA_PATTERNS = (
+        'sub-{subject}[/ses-{session}]/{datatype<anat>|anat}/sub-{subject}'
+        '[_ses-{session}][_acq-{acquisition}][_rec-{reconstruction}][_run-{run}]'
+        '[_space-{space}][_cohort-{cohort}][_res-{resolution}][_desc-{desc}]'
+        '_{suffix<features>}{extension<.json|.tsv>|.json}',
+        'sub-{subject}/{datatype<figures>}/sub-{subject}'
+        '[_ses-{session}][_acq-{acquisition}][_rec-{reconstruction}][_run-{run}]'
+        '[_space-{space}][_cohort-{cohort}][_desc-{desc}]'
+        '_{suffix<features>}{extension<.html|.svg>|.html}',
+    )
+
     class DerivativesDataSink(_NiworkflowsDerivativesDataSink):
         """DerivativesDataSink with out_path_base set to 'oncoprep'."""
         out_path_base = 'oncoprep'
+        _file_patterns = _ONCOPREP_EXTRA_PATTERNS + BIDS_DERIV_PATTERNS
     
     __all__ = ['DerivativesDataSink']
 except ImportError:

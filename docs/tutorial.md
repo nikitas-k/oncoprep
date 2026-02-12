@@ -48,9 +48,9 @@ bids_output/
 ```
 
 :::{tip}
-For batch conversion of many subjects, use the `--batch` flag:
+For batch conversion of many subjects, run without the `--subject` flag:
 ```bash
-oncoprep-convert raw_dicoms/ bids_output/ --batch
+oncoprep-convert raw_dicoms/ bids_output/
 ```
 :::
 

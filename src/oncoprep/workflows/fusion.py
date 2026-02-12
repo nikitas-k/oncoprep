@@ -565,6 +565,12 @@ def _fuse_segmentations(
 
     # === Helper functions (must be defined inside for Nipype serialization) ===
 
+    def _write_empty_segmentation(out_path):
+        """Write a minimal 1-voxel empty NIfTI as a placeholder."""
+        empty_data = np.zeros((1, 1, 1), dtype=np.int16)
+        img = nb.Nifti1Image(empty_data, affine=np.eye(4))
+        img.to_filename(out_path)
+
     def binary_majority_vote(candidates, weights=None):
         """Binary majority voting."""
         num_cands = len(candidates)
@@ -697,12 +703,18 @@ def _fuse_segmentations(
     # === Main fusion logic ===
 
     if not segmentation_files:
-        raise ValueError("No segmentation files provided")
+        LOGGER.warning("No segmentation files provided — all models may have failed. "
+                       "Writing empty segmentation to %s", output_path)
+        _write_empty_segmentation(output_path)
+        return output_path
 
     # Filter out None values
     valid_files = [f for f in segmentation_files if f is not None]
     if not valid_files:
-        raise ValueError("No valid segmentation files provided")
+        LOGGER.warning("No valid segmentation files after filtering (all None). "
+                       "Writing empty segmentation to %s", output_path)
+        _write_empty_segmentation(output_path)
+        return output_path
 
     if verbose:
         LOGGER.info(f"Loading {len(valid_files)} segmentations for fusion (method={method})")

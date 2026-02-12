@@ -241,7 +241,20 @@ def _run_segmentation_container(
             return False, results_dst
 
         # Build Singularity/Apptainer command
-        parts = [container_runtime, "exec"]
+        #
+        # Determine whether to use 'exec' or 'run':
+        #   - 'exec' requires an explicit executable as the first arg after the SIF
+        #   - 'run' invokes the container's runscript (Docker ENTRYPOINT+CMD)
+        #
+        # If model_command is empty/whitespace or starts with a flag (e.g. "-i"),
+        # the container relies on its Docker ENTRYPOINT, so we use 'run' and pass
+        # any remaining args.  Otherwise we use 'exec'.
+        has_explicit_command = (
+            bool(model_command and model_command.strip())
+            and not model_command.strip().startswith("-")
+        )
+        subcommand = "exec" if has_explicit_command else "run"
+        parts = [container_runtime, subcommand]
 
         # GPU support via --nv (NVIDIA) or --rocm (AMD)
         if config.get("runtime") == "nvidia":
@@ -253,15 +266,22 @@ def _run_segmentation_container(
         # Bind mount the data directory
         parts.extend(["--bind", f"{temp_dir}:{mountpoint}"])
 
+        # Set working directory inside the container.
+        # Docker images set WORKDIR but Singularity ignores it.
+        # Use the 'workdir' field from the model config, falling back to '/'.
+        container_workdir = config.get("workdir", "/")
+        parts.extend(["--pwd", container_workdir])
+
         # Custom flags (adapt Docker flags → Singularity equivalents)
-        # Singularity ignores Docker-only flags; we skip --user, --rm, etc.
+        # Singularity ignores Docker-only flags; we skip --user, --rm,
+        # --gpus, --shm-size, etc.
 
         # SIF path
         parts.append(sif_path)
 
-        # Execution command (split if needed)
+        # Append command / entrypoint args
         if model_command and model_command.strip():
-            parts.extend(model_command.split())
+            parts.extend(model_command.strip().split())
 
         command = " ".join(parts)
     else:
