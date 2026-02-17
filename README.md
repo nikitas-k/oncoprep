@@ -20,6 +20,74 @@ A toolbox for preprocessing and analyzing neuro-oncology MRI using standardized,
 - PACS/REST integration (can be a later adapter)
 - Non-MRI modalities unless explicitly added later (PET, perfusion, etc.)
 
+## Architecture
+
+OncoPrep is structured as a three-layer Nipype workflow system following [nipreps](https://www.nipreps.org/) conventions (fMRIPrep, sMRIPrep):
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                          CLI / BIDS App                             │
+│                  oncoprep <bids_dir> <out_dir> ...                  │
+└──────────────────────────────┬──────────────────────────────────────┘
+                               │
+┌──────────────────────────────▼─────────────────────────────────────┐
+│                     Orchestration Layer                            │
+│                   init_oncoprep_wf()  (base.py)                    │
+│       iterates subjects/sessions, manages memory & logging         │
+└───────┬──────────┬───────────┬──────────┬──────────┬───────────────┘
+        │          │           │          │          │
+        ▼          ▼           ▼          ▼          ▼
+┌───────────┐┌──────────┐┌──────────┐┌────────┐┌──────────┐
+│ Anatomical││Segmentat.││  Fusion  ││Radiom. ││  MRIQC   │
+│    WF     ││    WF    ││    WF    ││   WF   ││    WF    │
+│           ││          ││          ││        ││          │
+│ •register ││ •Docker  ││ •MAV     ││•Hist   ││•IQMs     │
+│ •skull-   ││  models  ││ •SIMPLE  ││ norm   ││•SNR/CNR  │
+│  strip    ││ •multi-  ││ •BraTS   ││•PyRad  ││•reports  │
+│ •deface   ││  model   ││  fusion  ││ feat.  ││          │
+│ •template ││  ensemb. ││          ││•reports││          │
+└─────┬─────┘└────┬─────┘└────┬─────┘└───┬────┘└────┬─────┘
+      │           │           │          │          │
+      └───────────┴───────────┴──────────┴──────────┘
+                               │
+┌──────────────────────────────▼──────────────────────────────────────┐
+│                        Outputs Layer                                │
+│              DerivativesDataSink → BIDS Derivatives                 │
+│       sub-XXX/anat/  •NIfTI  •JSON  •TSV  •HTML reports             │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Data flow
+
+```
+BIDS input ─► Anatomical WF ─► registered T1w/T1ce/T2w/FLAIR
+                 │
+                 ├──► Segmentation WF ─► N tumor predictions
+                 │         │
+                 │         └──► Fusion WF ─► consensus segmentation
+                 │                  │
+                 │                  └──► Radiomics WF ─► features JSON + report
+                 │
+                 └──► MRIQC WF ─► quality metrics
+                 │
+                 └──► DerivativesDataSink ─► BIDS-compliant derivatives/
+```
+
+## Engineering Features
+
+| Feature | Description |
+|---------|-------------|
+| **BIDS-native** | Full [BIDS](https://bids-specification.readthedocs.io/) and BIDS Derivatives compliance for inputs, outputs, and file naming (via PyBIDS + niworkflows `DerivativesDataSink`). |
+| **Nipype workflows** | All processing is expressed as composable Nipype workflow graphs — enabling parallel execution, HPC plugin support (SGE, PBS, SLURM), automatic provenance tracking, and crash recovery. |
+| **Container-based segmentation** | 14 BraTS-challenge Docker models run in isolated containers; supports Docker and Singularity/Apptainer runtimes with GPU passthrough. |
+| **Ensemble fusion** | Three fusion algorithms (majority vote, SIMPLE, BraTS-specific) combine predictions from multiple segmentation models for robust consensus labels. |
+| **IBSI-compliant radiomics** | Intensity normalization (z-score, Nyul, WhiteStripe) before PyRadiomics feature extraction; reproducible across scanners and sites. |
+| **Multi-modal support** | Joint processing of T1w, T1ce, T2w, and FLAIR with automatic handling of missing modalities via optional input buffers. |
+| **MRIQC integration** | Automated no-reference image quality metrics (SNR, CNR, CJV, EFC) computed before preprocessing for early scan rejection. |
+| **fMRIPrep-style reports** | Per-subject HTML reports with registration overlays, tumor ROI contour plots, radiomics summary tables, and quality metrics. |
+| **HPC-ready** | Singularity/Apptainer support with pre-downloadable model caches; PBS/SLURM job script patterns included. |
+| **Portable & reproducible** | Docker image with all neuroimaging dependencies (ANTs, FSL, FreeSurfer, dcm2niix) pinned; deterministic workflow hashing for cache reuse. |
+
 ## Quick start
 
 ```bash
