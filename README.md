@@ -39,7 +39,7 @@ OncoPrep is structured as a three-layer Nipype workflow system following [niprep
         ▼          ▼           ▼          ▼          ▼
 ┌───────────┐┌──────────┐┌──────────┐┌────────┐┌──────────┐
 │ Anatomical││Segmentat.││  Fusion  ││Radiom. ││  MRIQC   │
-│    WF     ││    WF    ││    WF    ││   WF   ││    WF    │
+│    WF     ││    WF    ││    WF    ││   WF   ││ (disabled)│
 │           ││          ││          ││        ││          │
 │ •register ││ •Docker  ││ •MAV     ││•Hist   ││•IQMs     │
 │ •skull-   ││  models  ││ •SIMPLE  ││ norm   ││•SNR/CNR  │
@@ -68,7 +68,7 @@ BIDS input ─► Anatomical WF ─► registered T1w/T1ce/T2w/FLAIR
                  │                  │
                  │                  └──► Radiomics WF ─► features JSON + report
                  │
-                 └──► MRIQC WF ─► quality metrics
+                 └──► MRIQC WF ─► quality metrics  (temporarily disabled)
                  │
                  └──► DerivativesDataSink ─► BIDS-compliant derivatives/
 ```
@@ -83,7 +83,7 @@ BIDS input ─► Anatomical WF ─► registered T1w/T1ce/T2w/FLAIR
 | **Ensemble fusion** | Three fusion algorithms (majority vote, SIMPLE, BraTS-specific) combine predictions from multiple segmentation models for robust consensus labels. |
 | **IBSI-compliant radiomics** | Intensity normalization (z-score, Nyul, WhiteStripe) before PyRadiomics feature extraction; reproducible across scanners and sites. |
 | **Multi-modal support** | Joint processing of T1w, T1ce, T2w, and FLAIR with automatic handling of missing modalities via optional input buffers. |
-| **MRIQC integration** | Automated no-reference image quality metrics (SNR, CNR, CJV, EFC) computed before preprocessing for early scan rejection. |
+| **MRIQC integration** *(temporarily disabled)* | Automated no-reference image quality metrics (SNR, CNR, CJV, EFC). The `--run-qc` flag is accepted but ignored in this release; will be re-enabled in a future version. |
 | **fMRIPrep-style reports** | Per-subject HTML reports with registration overlays, tumor ROI contour plots, radiomics summary tables, and quality metrics. |
 | **HPC-ready** | Singularity/Apptainer support with pre-downloadable model caches; PBS/SLURM job script patterns included. |
 | **Portable & reproducible** | Docker image with all neuroimaging dependencies (ANTs, FSL, FreeSurfer, dcm2niix) pinned; deterministic workflow hashing for cache reuse. |
@@ -258,8 +258,13 @@ extract = PyRadiomicsFeatureExtraction(
 
 See the [PyRadiomics documentation](https://pyradiomics.readthedocs.io/en/latest/customization.html) for all available settings.
 
-## Quality Control (MRIQC)
+## Quality Control (MRIQC) — *temporarily disabled*
 
+> **Note:** MRIQC integration is temporarily disabled in this release.
+> The `--run-qc` flag is accepted but ignored. It will be re-enabled in a
+> future version once upstream compatibility issues are resolved.
+
+<!--
 OncoPrep integrates [MRIQC](https://mriqc.readthedocs.io/) for automated image quality assessment. MRIQC computes no-reference image quality metrics (IQMs) on raw BIDS anatomical data **before** preprocessing, enabling early detection of unusable scans due to motion artifacts, signal inhomogeneity, or acquisition problems.
 
 ### Install
@@ -302,6 +307,7 @@ MRIQC produces outputs in `<output_dir>/mriqc/`:
 | `sub-XXX_T1w.html` | Per-subject visual QC report |
 | `sub-XXX_T1w.json` | Per-subject IQM values |
 | `group_T1w.tsv` | Group-level IQM summary (if multiple subjects) |
+-->
 
 #### Custom label definitions
 

@@ -172,8 +172,13 @@ The JSON contains features for each tumor region (NCR, ED, ET, WT, TC)
 across feature classes (shape, first-order, GLCM, GLRLM, GLSZM, GLDM,
 NGTDM).
 
-## Step 5 — Quality control with MRIQC (optional)
+## Step 5 — Quality control with MRIQC (temporarily disabled)
 
+> **Note:** MRIQC integration is temporarily disabled in this release.
+> The `--run-qc` flag is accepted but ignored. This section is preserved
+> for reference and will be updated when MRIQC support is re-enabled.
+
+<!--
 Run [MRIQC](https://mriqc.readthedocs.io/) to compute no-reference image
 quality metrics (IQMs) on the raw BIDS data. This runs *in parallel* with
 preprocessing and can flag unusable scans early:
@@ -188,6 +193,7 @@ oncoprep bids_output/ derivatives/ participant \
 
 Quality metrics are written to `derivatives/mriqc/` and include per-subject
 HTML reports and JSON files with IQMs such as SNR, CNR, CJV, EFC, and FBER.
+-->
 
 ## Step 6 — Reports
 
@@ -287,7 +293,6 @@ oncoprep /path/to/bids /path/to/derivatives participant \
   --deface \
   --run-segmentation \
   --run-radiomics \
-  --run-qc \
   --container-runtime auto \
   --seg-cache-dir /path/to/seg_cache \
   --templateflow-home /path/to/templateflow \
@@ -428,8 +433,12 @@ oncoprep /data/bids /data/out participant \
   --run-radiomics --default-seg
 ```
 
-#### Quality control with MRIQC
+#### Quality control with MRIQC (temporarily disabled)
 
+> **Note:** MRIQC integration is temporarily disabled in this release.
+> The `--run-qc` flag is accepted but ignored.
+
+<!--
 ```bash
 # Run MRIQC on raw BIDS data in parallel with preprocessing
 oncoprep /data/bids /data/out participant \
@@ -439,6 +448,7 @@ oncoprep /data/bids /data/out participant \
 
 IQM reports (SNR, CNR, CJV, EFC, FBER) and per-subject HTML reports are
 written to `<output_dir>/mriqc/`.
+-->
 
 #### Privacy (defacing)
 
@@ -531,7 +541,7 @@ docker run --platform linux/amd64 --rm \
   --participant-label 001
 ```
 
-#### Docker with all features (GPU + segmentation + radiomics + QC)
+#### Docker with all features (GPU + segmentation + radiomics)
 
 ```bash
 docker run --rm --gpus all \
@@ -545,7 +555,6 @@ docker run --rm --gpus all \
   --session-label 01 \
   --run-segmentation \
   --run-radiomics \
-  --run-qc \
   --deface \
   --nprocs 8 \
   --mem-gb 32 \
@@ -580,7 +589,6 @@ singularity run --nv \
   --participant-label 001 \
   --run-segmentation \
   --run-radiomics \
-  --run-qc \
   --deface \
   --container-runtime singularity \
   --seg-cache-dir /seg_cache \
@@ -621,7 +629,6 @@ singularity run --nv \
   --participant-label 001 \
   --run-segmentation \
   --run-radiomics \
-  --run-qc \
   --deface \
   --container-runtime singularity \
   --seg-cache-dir /seg_cache \
@@ -660,7 +667,6 @@ wf = init_oncoprep_wf(
     deface=True,
     run_segmentation=True,
     run_radiomics=True,
-    run_qc=True,
     default_seg=False,
     seg_model_path=None,
     sloppy=False,
@@ -692,9 +698,6 @@ derivatives/
 │               ├── sub-001_ses-01_desc-tumor_dseg.nii.gz
 │               ├── sub-001_ses-01_desc-radiomics_features.json
 │               └── sub-001_ses-01_desc-defaced_T1w.nii.gz
-└── mriqc/
-    ├── sub-001_ses-01_T1w.html
-    └── sub-001_ses-01_T1w.json
 ```
 
 ### Quick reference: all CLI flags
@@ -720,7 +723,7 @@ derivatives/
 | `--container-runtime` | `auto` / `docker` / `singularity` / `apptainer` | `auto` |
 | `--seg-cache-dir` | Pre-downloaded model cache | Auto |
 | `--run-radiomics` | Feature extraction | Off |
-| `--run-qc` | MRIQC quality control | Off |
+| `--run-qc` | MRIQC quality control (**temporarily disabled**) | Off |
 | `--nprocs` | CPU count | All available |
 | `--omp-nthreads` | Threads per process | Auto |
 | `--mem-gb` | Memory limit (GB) | Unlimited |

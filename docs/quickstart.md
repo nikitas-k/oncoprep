@@ -30,14 +30,16 @@ This runs the full anatomical preprocessing pipeline:
 
 ## 3. Run with quality control
 
+> **Note:** MRIQC integration is temporarily disabled in this release.
+> The `--run-qc` flag is accepted but ignored. It will be re-enabled in a
+> future version.
+
 ```bash
-# Run preprocessing with MRIQC quality metrics
+# TEMPORARILY DISABLED — flag is accepted but has no effect
 oncoprep /path/to/bids /path/to/derivatives participant \
   --participant-label sub-001 \
   --run-qc
 ```
-
-IQM reports are written to `<output_dir>/mriqc/`.
 
 ## 4. Run with segmentation
 

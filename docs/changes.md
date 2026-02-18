@@ -15,6 +15,29 @@
 - Three-step segmentation: ET on T1ce, NCR via hole-filling, WT on FLAIR.
 - White-matter negative prompt heuristic for reducing ET false positives.
 - New documentation page: `usage/segmentation.md`.
+- **Methods boilerplate** — `--boilerplate` now writes `CITATION.md` and
+  `CITATION.html` to the logs directory and prints the full methods text to
+  stdout.  Uses `LiterateWorkflow.visit_desc()` to recursively aggregate
+  descriptions from every sub-workflow.
+- **Separate references section** in HTML reports — references are rendered
+  in their own `<div id="references">` section with a dedicated nav link,
+  keeping the Methods section concise.
+- `--reports-only` now builds the workflow graph (without heavy template
+  fetching) so that `visit_desc()` produces the full boilerplate, then
+  generates per-subject HTML reports with figures, methods, and references.
+- Added workflow description (`__desc__`) to the nnInteractive segmentation
+  workflow, citing Isensee et al. (2025).
+- All `@citation_key` references used in workflow descriptions are now
+  resolved to full bibliographic entries (13 references covering Nipype,
+  ANTs, N4, HD-BET, SynthStrip, FSL FAST, TemplateFlow, PyRadiomics, and
+  more).
+
+### Temporarily Disabled
+
+- **MRIQC integration** (`--run-qc`) is temporarily disabled in this release.
+  The CLI flag is accepted but ignored with a deprecation warning.
+  Tests for MRIQC have been removed. Integration will be re-enabled in a
+  future version once upstream compatibility issues are resolved.
 
 ### Bug Fixes
 
@@ -35,6 +58,10 @@
 - Replaced unused `from nipype import Workflow` with
   `from niworkflows.engine.workflows import LiterateWorkflow as Workflow` in
   `workflows/nninteractive.py`.
+- Fixed single-subject workflow description mentioning "functional data"
+  (OncoPrep processes anatomical data only).
+- Suppressed misleading "ANAT Stage X" logger messages during
+  `--reports-only` and `--boilerplate` (no actual processing occurs).
 
 ## 0.2.0 (2025-02-11)
 

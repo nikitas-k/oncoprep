@@ -5,7 +5,8 @@ Produces an fMRIPrep-style XHTML report with Bootstrap 4 navbar.
 
 
 def collate_subject_report(output_dir, subject_id, version,
-                           report_files, workflow_desc=''):
+                           report_files, workflow_desc='',
+                           references=''):
     """Assemble every reportlet under ``oncoprep/`` into one XHTML file.
 
     Parameters
@@ -21,6 +22,8 @@ def collate_subject_report(output_dir, subject_id, version,
         Sentinel list used only for Nipype DAG ordering.
     workflow_desc : str
         Boilerplate workflow description text.
+    references : str
+        Formatted references section text.
 
     Returns
     -------
@@ -131,9 +134,9 @@ def collate_subject_report(output_dir, subject_id, version,
         sec += (
             '        <div id="datatype-figures_space_suffix-T1w">\n'
             '<h3 class="run-title">Spatial normalization of the anatomical '
-            'T1w reference</h3>'
+            'images</h3>'
             '<p class="elem-desc">Results of nonlinear alignment of the T1w '
-            'reference one or more template space(s). Hover on the panels '
+            'reference (and other modalities) to one or more template space(s). Hover on the panels '
             'with the mouse pointer to transition between both spaces.</p>'
         )
         for caption, fname in norm_figures:
@@ -250,6 +253,18 @@ def collate_subject_report(output_dir, subject_id, version,
     sec += '</div>\n'
     sections.append(sec)
 
+    # -- References --
+    sec = '<div id="references">\n'
+    sec += '    <h1 class="sub-report-title">References</h1>\n'
+    if references:
+        sec += (
+            '    <div class="boiler-html">\n'
+            + references.strip() + '\n'
+            '    </div>\n'
+        )
+    sec += '</div>\n'
+    sections.append(sec)
+
     # -- Errors --
     sec = (
         '<div id="errors">\n'
@@ -285,6 +300,8 @@ def collate_subject_report(output_dir, subject_id, version,
         '<a class="nav-link" href="#About">About</a></li>\n'
         '        <li class="nav-item">'
         '<a class="nav-link" href="#boilerplate">Methods</a></li>\n'
+        '        <li class="nav-item">'
+        '<a class="nav-link" href="#references">References</a></li>\n'
         '        <li class="nav-item">'
         '<a class="nav-link" href="#errors">Errors</a></li>\n'
     )
