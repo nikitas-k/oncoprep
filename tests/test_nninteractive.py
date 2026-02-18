@@ -500,10 +500,10 @@ class TestNNInteractiveIntegration:
         wf.base_dir = str(tmp_path / "work")
 
         wf.inputs.inputnode.source_file = real_images["t1w"]
-        wf.inputs.inputnode.t1w_preproc = real_images["t1w"]
-        wf.inputs.inputnode.t1ce_preproc = real_images["t1ce"]
-        wf.inputs.inputnode.t2w_preproc = real_images["t2w"]
-        wf.inputs.inputnode.flair_preproc = real_images["flair"]
+        wf.inputs.inputnode.t1w = real_images["t1w"]
+        wf.inputs.inputnode.t1ce = real_images["t1ce"]
+        wf.inputs.inputnode.t2w = real_images["t2w"]
+        wf.inputs.inputnode.flair = real_images["flair"]
 
         result = wf.run()
 

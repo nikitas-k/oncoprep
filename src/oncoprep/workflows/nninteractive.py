@@ -28,10 +28,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from nipype import Workflow
 from nipype.interfaces import utility as niu
 from nipype.pipeline import engine as pe
-from niworkflows.engine.workflows import LiterateWorkflow
+from niworkflows.engine.workflows import LiterateWorkflow as Workflow
 
 from oncoprep.utils.logging import get_logger
 
@@ -161,8 +160,6 @@ def init_nninteractive_seg_wf(
     flair
         FLAIR image registered to T1w space (preprocessed; raw FLAIR
         typically has thick slices that degrade after simple resampling).
-    brain_mask
-        Brain mask in T1w voxel space (from preprocessing).
 
     Outputs
     -------
@@ -179,7 +176,7 @@ def init_nninteractive_seg_wf(
     """
     from oncoprep.interfaces.nninteractive import NNInteractiveSegmentation
 
-    workflow = LiterateWorkflow(name=name)
+    workflow = Workflow(name=name)
 
     inputnode = pe.Node(
         niu.IdentityInterface(

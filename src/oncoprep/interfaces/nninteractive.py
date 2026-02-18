@@ -50,10 +50,6 @@ import logging
 import os
 from typing import Optional
 
-# MPS fallback for Apple Silicon — must be set before torch is ever imported
-# in this process (Nipype MultiProc forks workers that may import this module).
-os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
-
 from nipype.interfaces.base import (
     BaseInterfaceInputSpec,
     File,

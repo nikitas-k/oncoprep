@@ -16,6 +16,26 @@
 - White-matter negative prompt heuristic for reducing ET false positives.
 - New documentation page: `usage/segmentation.md`.
 
+### Bug Fixes
+
+- Fixed broken Nipype connections for the Docker-based segmentation path
+  (`--default-seg` not set): `base.py` now conditionally wires preprocessed
+  modalities (`t1w_preproc`, `t1ce_preproc`, etc.) to `init_anat_seg_wf` and
+  raw BIDS images to `init_nninteractive_seg_wf`, instead of applying
+  nnInteractive-style field names to both paths.
+- Fixed stale `inputnode` field names (`t1w_preproc` → `t1w`, etc.) in the
+  integration test `test_workflow_runs_end_to_end`.
+- Moved `_pick_first` helper below all top-level imports in `base.py` to fix
+  E402 (module-level import not at top of file).
+- Removed `os.environ['PYTORCH_ENABLE_MPS_FALLBACK']` side-effect at
+  `interfaces/nninteractive.py` import time; the variable is now set only
+  inside `_init_session()`.
+- Removed stale `brain_mask` entry from `init_nninteractive_seg_wf` docstring
+  (the field is not part of the workflow's inputnode).
+- Replaced unused `from nipype import Workflow` with
+  `from niworkflows.engine.workflows import LiterateWorkflow as Workflow` in
+  `workflows/nninteractive.py`.
+
 ## 0.2.0 (2025-02-11)
 
 ### Features
