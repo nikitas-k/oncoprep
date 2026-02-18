@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.2.1 (unreleased)
+
+### Features
+
+- **nnInteractive default segmentation** — the `--default-seg` flag now uses
+  nnInteractive (Isensee et al., 2025; arXiv:2503.08373), a zero-shot 3D
+  promptable foundation model trained on 120+ volumetric datasets.  No Docker
+  containers are required; model weights (~400 MB) download automatically from
+  HuggingFace on first use.
+- Fully-automated seed-point generation via multi-modal anomaly scoring
+  (T1ce enhancement × T2 anomaly × FLAIR hyperintensity) with adaptive
+  percentile thresholding.
+- Three-step segmentation: ET on T1ce, NCR via hole-filling, WT on FLAIR.
+- White-matter negative prompt heuristic for reducing ET false positives.
+- New documentation page: `usage/segmentation.md`.
+
 ## 0.2.0 (2025-02-11)
 
 ### Features

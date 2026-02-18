@@ -103,9 +103,12 @@ oncoprep ... --registration-backend greedy
 
 ## Step 3 — Tumor segmentation
 
-Segmentation requires Docker. Make sure the Docker daemon is running.
+OncoPrep ships two segmentation backends.  The default
+(`--default-seg`) uses **nnInteractive**, a zero-shot 3D promptable foundation
+model that requires no Docker containers — just a ~400 MB model checkpoint that
+downloads automatically on first use.
 
-### Single model (fast, CPU)
+### nnInteractive (default, CPU or GPU)
 
 ```bash
 oncoprep bids_output/ derivatives/ participant \
@@ -113,9 +116,14 @@ oncoprep bids_output/ derivatives/ participant \
   --run-segmentation --default-seg
 ```
 
-This runs the default model (`econib/brats-2018`) on CPU. Takes ~5 minutes.
+nnInteractive (Isensee et al., 2025; [arXiv:2503.08373](https://arxiv.org/abs/2503.08373))
+was trained on 120+ diverse 3D datasets and performs zero-shot inference on
+glioma MRI — it has never seen BraTS training data.  OncoPrep fully automates
+the prompting step by deriving seed points from multi-modal intensity
+anomalies (see {doc}`usage/segmentation` for the algorithm).  Runs on CUDA,
+Apple Silicon (MPS), or CPU.
 
-### Multi-model ensemble (GPU)
+### Docker ensemble (GPU required)
 
 ```bash
 oncoprep bids_output/ derivatives/ participant \
