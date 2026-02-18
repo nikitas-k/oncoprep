@@ -64,8 +64,15 @@ Each workflow factory returns a `Workflow` instance with `inputnode` and
    init_multimodal_radiomics_wf
 ```
 
-## Quality control (MRIQC)
+## Quality control (MRIQC) — *temporarily disabled*
 
+:::{warning}
+MRIQC integration is temporarily disabled in this release.
+The `--run-qc` CLI flag is accepted but ignored.
+This module will be re-enabled in a future version.
+:::
+
+<!--
 ```{eval-rst}
 .. module:: oncoprep.workflows.mriqc
 .. autosummary::
@@ -75,6 +82,7 @@ Each workflow factory returns a `Workflow` instance with `inputnode` and
    init_mriqc_wf
    init_mriqc_group_wf
 ```
+-->
 
 ### Legacy metrics *(deprecated)*
 
@@ -93,7 +101,8 @@ Each workflow factory returns a `Workflow` instance with `inputnode` and
 
 :::{warning}
 The workflows in `oncoprep.workflows.metrics` are deprecated.
-Use `init_mriqc_wf()` from `oncoprep.workflows.mriqc` instead.
+MRIQC integration is temporarily disabled and will be re-enabled
+in a future version.
 :::
 
 ## Derivatives output

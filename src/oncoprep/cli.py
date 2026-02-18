@@ -335,8 +335,9 @@ def get_parser():
     g_conf.add_argument(
         '--run-qc',
         action='store_true',
-        help='run quality control on raw BIDS data using MRIQC before '
-        'preprocessing (requires mriqc; outputs to <output_dir>/mriqc/)',
+        help='[TEMPORARILY DISABLED] MRIQC quality control integration is '
+        'non-functional in this release and will be re-enabled in a future '
+        'version. This flag is accepted but ignored.',
     )
     
     # ANTs options
@@ -565,9 +566,44 @@ def build_opts(opts):
         oncoprep_wf.write_graph(graph2use='colored', format='svg', simple_form=True)
     
     if opts.reports_only:
+        from oncoprep import __version__
+        from oncoprep.utils.collate import collate_subject_report
+        from oncoprep.workflows.base import REFERENCES
+
+        methods_text = oncoprep_wf.visit_desc() or ''
+        boilerplate_text = methods_text + '\n### References\n\n' + REFERENCES
+        log_dir = Path(output_dir) / 'oncoprep' / 'logs'
+        log_dir.mkdir(parents=True, exist_ok=True)
+        (log_dir / 'CITATION.md').write_text(boilerplate_text)
+        logger.log(25, 'Boilerplate written to %s', log_dir / 'CITATION.md')
+
+        for subject_id, _sessions in subject_session_list:
+            sub_label = f'sub-{subject_id}'
+            report_path = collate_subject_report(
+                output_dir=str(output_dir),
+                subject_id=sub_label,
+                version=__version__,
+                report_files=[],
+                workflow_desc=methods_text,
+                references=REFERENCES,
+            )
+            logger.log(25, 'Report generated: %s', report_path)
+
         sys.exit(int(retcode > 0))
     
     if opts.boilerplate:
+        from oncoprep.workflows.base import REFERENCES
+
+        boilerplate_text = (oncoprep_wf.visit_desc() or '') + '\n### References\n\n' + REFERENCES
+        # Write citation files
+        log_dir = Path(output_dir) / 'oncoprep' / 'logs'
+        log_dir.mkdir(parents=True, exist_ok=True)
+        (log_dir / 'CITATION.md').write_text(boilerplate_text)
+        (log_dir / 'CITATION.html').write_text(
+            '<html><body>\n' + boilerplate_text + '\n</body></html>'
+        )
+        logger.log(25, 'Boilerplate written to %s', log_dir / 'CITATION.md')
+        print(boilerplate_text)
         sys.exit(int(retcode > 0))
     
     # Clean up master process before running workflow
@@ -726,7 +762,8 @@ def build_workflow(opts, retval):
     retval['run_uuid'] = run_uuid
     retval['workflow'] = None
     
-    # Handle reports-only mode
+    # Handle reports-only mode: still build the workflow (needed for
+    # visit_desc() boilerplate), but skip heavy template fetching.
     if opts.reports_only:
         logger.log(
             25, 'Running --reports-only on participants %s', 
@@ -734,29 +771,38 @@ def build_workflow(opts, retval):
         )
         if opts.run_uuid is not None:
             run_uuid = opts.run_uuid
-        return retval
+        # Fall through to build the workflow below so visit_desc() works
     
-    logger.log(
-        25,
-        INIT_MSG.format(
-            bids_dir=bids_dir,
-            subject_session_list=_pprint_subses(subject_session_list),
-            uuid=run_uuid,
-            spaces=', '.join(opts.output_spaces),
-        ),
-    )
+    if not opts.reports_only:
+        logger.log(
+            25,
+            INIT_MSG.format(
+                bids_dir=bids_dir,
+                subject_session_list=_pprint_subses(subject_session_list),
+                uuid=run_uuid,
+                spaces=', '.join(opts.output_spaces),
+            ),
+        )
     
-    # Ensure TemplateFlow templates are available
-    _ensure_templateflow_templates(
-        output_spaces=opts.output_spaces,
-        skull_strip_template=opts.skull_strip_template,
-        templateflow_home=opts.templateflow_home,
-        offline=opts.offline,
-        sloppy=opts.sloppy,
-        logger=logger,
-    )
+    if not opts.reports_only:
+        # Ensure TemplateFlow templates are available
+        _ensure_templateflow_templates(
+            output_spaces=opts.output_spaces,
+            skull_strip_template=opts.skull_strip_template,
+            templateflow_home=opts.templateflow_home,
+            offline=opts.offline,
+            sloppy=opts.sloppy,
+            logger=logger,
+        )
 
     # Build top-level workflow for multi-subject processing
+    # Suppress verbose "ANAT Stage X" logs during workflow construction
+    # when only generating reports or boilerplate (no actual processing).
+    _wf_logger = logging.getLogger('nipype.workflow')
+    _prev_level = _wf_logger.level
+    if opts.reports_only or opts.boilerplate:
+        _wf_logger.setLevel(logging.WARNING)
+
     retval['workflow'] = init_oncoprep_wf(
         output_dir=output_dir,
         subject_session_list=subject_session_list,
@@ -777,13 +823,16 @@ def build_workflow(opts, retval):
         deface=opts.deface,
         run_segmentation=opts.run_segmentation or opts.run_radiomics,
         run_radiomics=opts.run_radiomics,
-        run_qc=opts.run_qc,
+        run_qc=False,
         seg_model_path=opts.seg_model_path,
         default_seg=opts.default_seg,
         sloppy=opts.sloppy,
         container_runtime=opts.container_runtime,
         seg_cache_dir=opts.seg_cache_dir,
     )
+
+    # Restore logger level after workflow construction
+    _wf_logger.setLevel(_prev_level)
     
     retval['return_code'] = 0
     return retval

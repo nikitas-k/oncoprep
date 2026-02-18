@@ -177,6 +177,16 @@ def init_nninteractive_seg_wf(
     from oncoprep.interfaces.nninteractive import NNInteractiveSegmentation
 
     workflow = Workflow(name=name)
+    workflow.__desc__ = """\
+Tumor segmentation was performed using *nnInteractive* [@isensee2025nninteractive],
+a zero-shot promptable 3D foundation model trained on 120+ volumetric datasets.
+Seed points were generated automatically from multi-modal intensity anomaly
+scoring (T1ce enhancement × T2 anomaly × FLAIR hyperintensity) with adaptive
+percentile thresholding.  Segmentation proceeded in three steps: enhancing
+tumor (ET) delineation on T1ce, necrotic core (NCR) via region-filling, and
+whole tumor (WT) on FLAIR.  Model weights (~400 MB) were obtained from
+HuggingFace.  No Docker containers or BraTS-specific fine-tuning were required.
+"""
 
     inputnode = pe.Node(
         niu.IdentityInterface(

@@ -84,11 +84,12 @@ oncoprep <bids_dir> <output_dir> <analysis_level> [options]
 --run-radiomics       Enable feature extraction (implies --run-segmentation)
 ```
 
-#### Quality control
+#### Quality control (temporarily disabled)
 
 ```
---run-qc              Run MRIQC quality control on raw BIDS data
-                      (requires mriqc; outputs to <output_dir>/mriqc/)
+--run-qc              [TEMPORARILY DISABLED] MRIQC quality control
+                      integration is non-functional in this release.
+                      This flag is accepted but ignored.
 ```
 
 #### Other

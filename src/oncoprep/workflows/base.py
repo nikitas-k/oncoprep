@@ -74,13 +74,56 @@ from oncoprep.workflows.segment import init_anat_seg_wf
 from oncoprep.workflows.nninteractive import init_nninteractive_seg_wf
 from oncoprep.workflows.brats_outputs import init_ds_tumor_seg_wf
 from oncoprep.workflows.radiomics import init_anat_radiomics_wf
-from oncoprep.workflows.mriqc import init_mriqc_wf
+# NOTE: MRIQC integration is temporarily disabled (non-functional).
+# from oncoprep.workflows.mriqc import init_mriqc_wf
 from ..interfaces import DerivativesDataSink, OncoprepBIDSDataGrabber
 from ..interfaces.reports import SubjectSummary, AboutSummary
 from .anatomical import init_anat_preproc_wf
 
 
 LOGGER = logging.getLogger('nipype.workflow')
+
+REFERENCES = """\
+1. K. Gorgolewski et al., "Nipype: A Flexible, Lightweight and Extensible
+   Neuroimaging Data Processing Framework in Python," *Front. Neuroinform.*,
+   vol. 5, p. 13, 2011. https://doi.org/10.3389/fninf.2011.00013
+2. K. Gorgolewski et al., "Nipype," *Software*.
+   https://doi.org/10.5281/zenodo.596855
+3. F. Isensee et al., "nnInteractive: Redefining 3D Promptable Segmentation,"
+   *arXiv:2503.08373*, 2025. https://arxiv.org/abs/2503.08373
+4. B.B. Avants et al., "A reproducible evaluation of ANTs similarity metric
+   performance in brain image registration," *NeuroImage*, vol. 54, no. 3,
+   pp. 2033–2044, 2011. https://doi.org/10.1016/j.neuroimage.2010.09.025
+5. N.J. Tustison et al., "N4ITK: Improved N3 Bias Correction," *IEEE Trans.
+   Med. Imaging*, vol. 29, no. 6, pp. 1310–1320, 2010.
+   https://doi.org/10.1109/TMI.2010.2046908
+6. F. Isensee et al., "Automated brain extraction of multisequence MRI using
+   artificial neural networks," *Hum. Brain Mapp.*, vol. 40, no. 17,
+   pp. 4952–4964, 2019. https://doi.org/10.1002/hbm.24750
+7. A.M. Hoopes et al., "SynthStrip: Skull-Stripping for Any Brain Image,"
+   *NeuroImage*, vol. 260, p. 119474, 2022.
+   https://doi.org/10.1016/j.neuroimage.2022.119474
+8. Y. Zhang, M. Brady, and S. Smith, "Segmentation of brain MR images through
+   a hidden Markov random field model and the expectation-maximization
+   algorithm," *IEEE Trans. Med. Imaging*, vol. 20, no. 1, pp. 45–57, 2001.
+   https://doi.org/10.1109/42.906424
+9. V. Fonov et al., "Unbiased average age-appropriate atlases for pediatric
+   studies," *NeuroImage*, vol. 54, no. 1, pp. 313–327, 2011.
+   https://doi.org/10.1016/j.neuroimage.2010.07.033
+10. R. Ciric et al., "TemplateFlow: FAIR-sharing of multi-scale, multi-species
+    brain models," *Nat. Methods*, vol. 19, pp. 1568–1571, 2022.
+    https://doi.org/10.1038/s41592-022-01681-2
+11. J.J.M. van Griethuysen et al., "Computational Radiomics System to Decode
+    the Radiographic Phenotype," *Cancer Res.*, vol. 77, no. 21, pp. e104–e107,
+    2017. https://doi.org/10.1158/0008-5472.CAN-17-0339
+12. R.T. Shinohara et al., "Statistical normalization techniques for magnetic
+    resonance imaging," *NeuroImage: Clinical*, vol. 6, pp. 9–19, 2014.
+    https://doi.org/10.1016/j.nicl.2014.08.008
+13. H. Um et al., "Impact of image preprocessing on the scanner dependence of
+    multi-parametric MRI radiomic features and covariate shift in
+    multi-institutional glioblastoma datasets," *Phys. Med. Biol.*, vol. 64,
+    no. 16, p. 165011, 2019. https://doi.org/10.1088/1361-6560/ab2f44
+"""
 
 
 def init_oncoprep_wf(
@@ -171,7 +214,7 @@ def init_oncoprep_wf(
     oncoprep_wf.__desc__ = f"""
 Results included in this manuscript come from preprocessing
 performed using *OncoPrep* {__version__}
-(https://github.com/nibabies/oncoprep),
+(https://github.com/nikitas-k/oncoprep),
 which is based on *Nipype* {nipype_ver}
 (@nipype1; @nipype2; RRID:SCR_002502).
 
@@ -180,10 +223,8 @@ which is based on *Nipype* {nipype_ver}
 
 For more details of the pipeline, see [the section corresponding
 to workflows in *OncoPrep*'s documentation]\
-(https://github.com/nibabies/oncoprep \
+(https://github.com/nikitas-k/oncoprep \
 "OncoPrep's documentation").
-
-### References
 
 """
 
@@ -356,8 +397,8 @@ def init_single_subject_wf(
 
     workflow = Workflow(name=name)
     workflow.__desc__ = f"""
-Preprocessing of anatomical and functional data for subject {subject_id}
-was performed using OncoPrep {__version__}, which is based on Nipype {nipype_ver}.
+Preprocessing of anatomical data for subject {subject_id}
+was performed using OncoPrep {__version__}, which is based on Nipype {nipype_ver}
 (@nipype1; @nipype2; RRID:SCR_002502).
 """
     workflow.__postdesc__ = """
@@ -366,9 +407,6 @@ For more details of the pipeline, see [the section corresponding
 to workflows in *OncoPrep*'s documentation]\
 (https://oncoprep.readthedocs.io/en/latest/workflows.html \
 "OncoPrep's documentation").
-
-### References
-
 """
 
     from ..utils.bids import collect_derivatives
@@ -645,21 +683,19 @@ to workflows in *OncoPrep*'s documentation]\
             ]),
         ])
 
-    # MRIQC quality control workflow (optional, runs on raw BIDS data)
+    # MRIQC quality control workflow — TEMPORARILY DISABLED
+    # The MRIQC integration is non-functional in this release.
+    # It will be re-enabled in a future version.
     if run_qc:
-        LOGGER.info('ANAT Stage 9: Initializing MRIQC quality control workflow (--run-qc)')
-        mriqc_wf = init_mriqc_wf(
-            bids_dir=bids_dir,
-            output_dir=output_dir,
-            subject_id=subject_id,
-            session_id=session_id if isinstance(session_id, str) else (
-                session_id[0] if isinstance(session_id, list) and session_id else None
-            ),
-            modalities=['T1w', 'T2w'],
-            work_dir=Path(str(output_dir)) / 'mriqc_work',
-            omp_nthreads=omp_nthreads,
-            name='mriqc_wf',
+        import warnings
+        warnings.warn(
+            '--run-qc / run_qc=True was requested but MRIQC integration is '
+            'temporarily disabled in this release. The flag will be ignored. '
+            'See https://github.com/nibabies/oncoprep for updates.',
+            UserWarning,
+            stacklevel=2,
         )
+        run_qc = False
 
     # ---- Collate all figures into a single sub-<label>.html report ----
     from ..utils.collate import collate_subject_report as _collate_fn
@@ -671,8 +707,9 @@ to workflows in *OncoPrep*'s documentation]\
         n_sentinels += 1  # tumor dseg report
     if run_radiomics and run_segmentation:
         n_sentinels += 1  # radiomics report
-    if run_qc:
-        n_sentinels += 1  # mriqc report
+    # NOTE: MRIQC sentinel disabled (non-functional)
+    # if run_qc:
+    #     n_sentinels += 1  # mriqc report
     report_sentinel_merge = pe.Node(
         niu.Merge(n_sentinels, no_flatten=True),
         name='report_sentinel_merge',
@@ -682,7 +719,8 @@ to workflows in *OncoPrep*'s documentation]\
         niu.Function(
             function=_collate_fn,
             input_names=['output_dir', 'subject_id', 'version',
-                         'report_files', 'workflow_desc'],
+                         'report_files', 'workflow_desc',
+                         'references'],
             output_names=['out_report'],
         ),
         name='collate_report',
@@ -691,7 +729,8 @@ to workflows in *OncoPrep*'s documentation]\
     collate_report.inputs.output_dir = str(output_dir)
     collate_report.inputs.subject_id = f'sub-{subject_id}'
     collate_report.inputs.version = __version__
-    collate_report.inputs.workflow_desc = workflow.__desc__ or ''
+    collate_report.inputs.workflow_desc = workflow.visit_desc() or ''
+    collate_report.inputs.references = REFERENCES
 
     workflow.connect([
         (ds_report_summary, report_sentinel_merge, [('out_file', 'in1')]),
@@ -716,15 +755,14 @@ to workflows in *OncoPrep*'s documentation]\
             ]),
         ])
 
-    if run_qc:
-        # Connect MRIQC output as a sentinel; the actual IQM output
-        # goes to <output_dir>/mriqc/ independently of the report collation.
-        _sentinel_idx += 1
-        workflow.connect([
-            (mriqc_wf, report_sentinel_merge, [
-                ('outputnode.mriqc_dir', f'in{_sentinel_idx}'),
-            ]),
-        ])
+    # NOTE: MRIQC sentinel disabled (non-functional)
+    # if run_qc:
+    #     _sentinel_idx += 1
+    #     workflow.connect([
+    #         (mriqc_wf, report_sentinel_merge, [
+    #             ('outputnode.mriqc_dir', f'in{_sentinel_idx}'),
+    #         ]),
+    #     ])
 
     workflow.connect([
         (report_sentinel_merge, collate_report, [('out', 'report_files')]),
