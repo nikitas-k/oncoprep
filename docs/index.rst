@@ -16,6 +16,8 @@ Key features
 
 - **BIDS-compliant preprocessing** — anatomical registration, skull-stripping,
   template normalization
+- **nnInteractive default segmentation** — zero-shot 3D promptable foundation
+  model (no Docker required; Isensee et al., 2025)
 - **Multi-model ensemble segmentation** — 14 BraTS-challenge Docker models
 - **Segmentation fusion** — majority voting, SIMPLE, and BraTS-specific fusion
 - **Radiomics** — PyRadiomics-based quantitative feature extraction
@@ -31,6 +33,7 @@ Key features
    quickstart
    tutorial
    usage/cli
+   usage/segmentation
    usage/docker
    usage/hpc
 

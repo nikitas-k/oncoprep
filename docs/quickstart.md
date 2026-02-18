@@ -42,12 +42,12 @@ IQM reports are written to `<output_dir>/mriqc/`.
 ## 4. Run with segmentation
 
 ```bash
-# Default single model (CPU, fast)
+# Default: nnInteractive zero-shot model (no Docker needed)
 oncoprep /path/to/bids /path/to/derivatives participant \
   --participant-label sub-001 \
   --run-segmentation --default-seg
 
-# Full ensemble (GPU required)
+# Full Docker ensemble (GPU required)
 oncoprep /path/to/bids /path/to/derivatives participant \
   --participant-label sub-001 \
   --run-segmentation

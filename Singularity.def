@@ -29,7 +29,7 @@ From: nvidia/cuda:11.8.0-runtime-ubuntu22.04
 
 %labels
     Author          Nikitas C. Koussis
-    Version         0.2.0
+    Version         0.2.1
     Description     OncoPrep neuro-oncology MRI preprocessing pipeline (GPU-enabled)
     License         Apache-2.0
     org.opencontainers.image.source https://github.com/neuronets/oncoprep

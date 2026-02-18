@@ -411,7 +411,8 @@ def get_parser():
     g_seg.add_argument(
         '--default-seg',
         action='store_true',
-        help='use default segmentation model',
+        help='use nnInteractive promptable model for tumor segmentation '
+             '(no Docker required; downloads model weights from HuggingFace on first run)',
     )
     g_seg.add_argument(
         '--seg-model-path',

@@ -43,6 +43,13 @@ from bids.layout import Query
 from .outputs import init_anat_reports_wf
 from ..utils.labels import split_seg_labels
 
+
+def _pick_first(val):
+    """Extract the first element if *val* is a list, pass through otherwise."""
+    if isinstance(val, (list, tuple)):
+        return val[0] if val else None
+    return val
+
 # Custom BIDS queries for OncoPrep (adds t1ce for neuro-oncology)
 # Uses ceagent entity per BIDS spec: T1ce = T1w with contrast agent (e.g., gadolinium)
 import copy
@@ -64,6 +71,7 @@ ONCOPREP_BIDS_QUERIES['t1w'] = {
 
 from oncoprep import __version__
 from oncoprep.workflows.segment import init_anat_seg_wf
+from oncoprep.workflows.nninteractive import init_nninteractive_seg_wf
 from oncoprep.workflows.brats_outputs import init_ds_tumor_seg_wf
 from oncoprep.workflows.radiomics import init_anat_radiomics_wf
 from oncoprep.workflows.mriqc import init_mriqc_wf
@@ -474,17 +482,32 @@ to workflows in *OncoPrep*'s documentation]\
 
     # Tumor segmentation workflow (optional)
     if run_segmentation:
-        LOGGER.info('ANAT Stage 6: Initializing tumor segmentation workflow (run_segmentation=True)')
-        anat_seg_wf = init_anat_seg_wf(
-            output_dir=output_dir,
-            use_gpu=use_gpu,
-            model_path=seg_model_path,
-            default_model=default_seg,
-            sloppy=sloppy,
-            container_runtime=container_runtime,
-            seg_cache_dir=seg_cache_dir,
-            name='anat_seg_wf',
-        )
+        if default_seg:
+            # Default segmentation: nnInteractive promptable model (no Docker required)
+            LOGGER.info(
+                'ANAT Stage 6: Initializing nnInteractive segmentation workflow '
+                '(default_seg=True)'
+            )
+            anat_seg_wf = init_nninteractive_seg_wf(
+                device='auto',
+                name='anat_seg_wf',
+            )
+        else:
+            # Ensemble / custom Docker-based segmentation
+            LOGGER.info(
+                'ANAT Stage 6: Initializing Docker-based segmentation workflow '
+                '(default_seg=False)'
+            )
+            anat_seg_wf = init_anat_seg_wf(
+                output_dir=output_dir,
+                use_gpu=use_gpu,
+                model_path=seg_model_path,
+                default_model=False,
+                sloppy=sloppy,
+                container_runtime=container_runtime,
+                seg_cache_dir=seg_cache_dir,
+                name='anat_seg_wf',
+            )
         
         # Datasink for tumor segmentation output
         ds_tumor_seg_wf = init_ds_tumor_seg_wf(
@@ -492,19 +515,39 @@ to workflows in *OncoPrep*'s documentation]\
             name='ds_tumor_seg_wf',
         )
 
+        if default_seg:
+            # nnInteractive: raw BIDS images for T1w/T1ce/T2w (same 1mm grid).
+            # FLAIR uses the preprocessed (registered) version because the
+            # raw FLAIR typically has thick slices (e.g. 3mm) whose simple
+            # affine resampling to the 1mm T1w grid is too lossy for the
+            # WT segmentation step.
+            workflow.connect([
+                (bidssrc, anat_seg_wf, [
+                    (('t1w', fix_multi_T1w_source_name), 'inputnode.source_file'),
+                    (('t1w', fix_multi_T1w_source_name), 'inputnode.t1w'),
+                    (('t1ce', _pick_first), 'inputnode.t1ce'),
+                    (('t2w', _pick_first), 'inputnode.t2w'),
+                ]),
+                (anat_preproc_wf, anat_seg_wf, [
+                    ('outputnode.flair_preproc', 'inputnode.flair'),
+                ]),
+            ])
+        else:
+            # Docker ensemble: preprocessed modalities
+            workflow.connect([
+                (bidssrc, anat_seg_wf, [
+                    (('t1w', fix_multi_T1w_source_name), 'inputnode.source_file'),
+                ]),
+                (anat_preproc_wf, anat_seg_wf, [
+                    ('outputnode.t1w_brain', 'inputnode.t1w_preproc'),
+                    ('outputnode.t1ce_preproc', 'inputnode.t1ce_preproc'),
+                    ('outputnode.t2w_preproc', 'inputnode.t2w_preproc'),
+                    ('outputnode.flair_preproc', 'inputnode.flair_preproc'),
+                    ('outputnode.t1w_mask', 'inputnode.brain_mask'),
+                ]),
+            ])
+
         workflow.connect([
-            # Source file for BIDS derivatives
-            (bidssrc, anat_seg_wf, [
-                (('t1w', fix_multi_T1w_source_name), 'inputnode.source_file'),
-            ]),
-            # Connect preprocessed modalities from anat_preproc_wf to segmentation
-            (anat_preproc_wf, anat_seg_wf, [
-                ('outputnode.t1w_brain', 'inputnode.t1w_preproc'),
-                ('outputnode.t1ce_preproc', 'inputnode.t1ce_preproc'),
-                ('outputnode.t2w_preproc', 'inputnode.t2w_preproc'),
-                ('outputnode.flair_preproc', 'inputnode.flair_preproc'),
-                ('outputnode.t1w_mask', 'inputnode.brain_mask'),
-            ]),
             # Save tumor segmentation to BIDS derivatives
             (bidssrc, ds_tumor_seg_wf, [
                 (('t1w', fix_multi_T1w_source_name), 'inputnode.source_file'),
