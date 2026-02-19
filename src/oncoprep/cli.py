@@ -752,6 +752,8 @@ def build_workflow(opts, retval):
     
     if opts.resource_monitor:
         ncfg.enable_resource_monitor()
+        from nipype.utils.profiler import log_nodes_cb
+        plugin_settings['plugin_args']['status_callback'] = log_nodes_cb
     
     retval['return_code'] = 0
     retval['plugin_settings'] = plugin_settings

@@ -12,8 +12,7 @@ Implements the pre-specified SAP (Statistical Analysis Plan):
 
 from __future__ import annotations
 
-import warnings
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, Sequence, Tuple
 
 import numpy as np
 
@@ -296,7 +295,9 @@ def degradation_auc(
     if x_range == 0:
         return float(y[0])
     x_norm = (x - x[0]) / x_range
-    return float(np.trapz(y, x_norm))
+    # np.trapz was renamed to np.trapezoid in NumPy 2.0
+    _trapz = getattr(np, "trapezoid", np.trapz)
+    return float(_trapz(y, x_norm))
 
 
 # ---------------------------------------------------------------------------

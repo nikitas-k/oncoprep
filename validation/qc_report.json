@@ -1,0 +1,345 @@
+{
+  "brats_gli": {
+    "dataset": "BraTS-GLI-2024",
+    "n_subjects_total": 1621,
+    "subjects_sampled": 30,
+    "modality_completeness": {
+      "ce-T1w": 100.0,
+      "T1w": 100.0,
+      "FLAIR": 100.0,
+      "T2w": 100.0
+    },
+    "shapes": {
+      "182\u00d7218\u00d7182": 120
+    },
+    "seg_label_counts": {
+      "2": 30,
+      "3": 21,
+      "4": 24,
+      "1": 11
+    },
+    "missing_modality_subjects": {},
+    "errors": [],
+    "snr_summary": {
+      "median": 6.53,
+      "iqr": [
+        5.42,
+        8.09
+      ],
+      "min": 4.44,
+      "max": 11.13
+    },
+    "dropout_summary": {
+      "median": 0.234,
+      "max": 0.317,
+      "n_above_20pct": 80
+    },
+    "seg_volume_summary_cc": {
+      "median": 65.61,
+      "iqr": [
+        32.37,
+        93.3
+      ],
+      "min": 2.42,
+      "max": 201.76
+    }
+  },
+  "brats_men": {
+    "dataset": "BraTS-MEN-2024",
+    "n_subjects_total": 1000,
+    "subjects_sampled": 30,
+    "modality_completeness": {
+      "ce-T1w": 100.0,
+      "T1w": 100.0,
+      "FLAIR": 100.0,
+      "T2w": 100.0
+    },
+    "shapes": {
+      "240\u00d7240\u00d7155": 120
+    },
+    "seg_label_counts": {
+      "3": 30,
+      "1": 8,
+      "2": 11
+    },
+    "missing_modality_subjects": {},
+    "errors": [],
+    "snr_summary": {
+      "median": 6.69,
+      "iqr": [
+        5.72,
+        8.98
+      ],
+      "min": 4.71,
+      "max": 13.16
+    },
+    "dropout_summary": {
+      "median": 0.234,
+      "max": 0.339,
+      "n_above_20pct": 92
+    },
+    "seg_volume_summary_cc": {
+      "median": 4.13,
+      "iqr": [
+        1.32,
+        32.39
+      ],
+      "min": 0.22,
+      "max": 320.55
+    }
+  },
+  "brats_met": {
+    "dataset": "BraTS-MET-2024",
+    "n_subjects_total": 652,
+    "subjects_sampled": 30,
+    "modality_completeness": {
+      "ce-T1w": 100.0,
+      "T1w": 100.0,
+      "FLAIR": 100.0,
+      "T2w": 100.0
+    },
+    "shapes": {
+      "512\u00d7512\u00d7206": 4,
+      "256\u00d7256\u00d7108": 4,
+      "288\u00d7288\u00d790": 4,
+      "256\u00d7256\u00d7134": 4,
+      "256\u00d7256\u00d7116": 4,
+      "256\u00d7256\u00d7126": 4,
+      "256\u00d7256\u00d7100": 4,
+      "320\u00d7320\u00d7104": 4,
+      "256\u00d7256\u00d7104": 4,
+      "256\u00d7256\u00d7106": 4,
+      "320\u00d7320\u00d7128": 4,
+      "256\u00d7256\u00d7112": 4,
+      "240\u00d7240\u00d7155": 72
+    },
+    "seg_label_counts": {
+      "1": 18,
+      "2": 30,
+      "3": 30
+    },
+    "missing_modality_subjects": {},
+    "errors": [],
+    "snr_summary": {
+      "median": 5.63,
+      "iqr": [
+        5.07,
+        6.92
+      ],
+      "min": 4.45,
+      "max": 10.68
+    },
+    "dropout_summary": {
+      "median": 0.194,
+      "max": 0.475,
+      "n_above_20pct": 56
+    },
+    "seg_volume_summary_cc": {
+      "median": 14.39,
+      "iqr": [
+        2.16,
+        36.39
+      ],
+      "min": 0.15,
+      "max": 114.88
+    }
+  },
+  "ucsf_pdgm": {
+    "dataset": "UCSF-PDGM-v3",
+    "n_subjects_total": 496,
+    "subjects_sampled": 30,
+    "modality_completeness": {
+      "T1w": 100.0,
+      "ce-T1w": 100.0,
+      "T2w": 100.0,
+      "FLAIR": 100.0
+    },
+    "shapes": {
+      "240\u00d7240\u00d7155": 120
+    },
+    "seg_label_counts": {
+      "1": 22,
+      "2": 30,
+      "4": 22
+    },
+    "missing_modality_subjects": {},
+    "errors": [],
+    "snr_summary": {
+      "median": 6.56,
+      "iqr": [
+        5.79,
+        8.05
+      ],
+      "min": 4.78,
+      "max": 10.73
+    },
+    "dropout_summary": {
+      "median": 0.177,
+      "max": 0.282,
+      "n_above_20pct": 48
+    },
+    "seg_volume_summary_cc": {
+      "median": 85.65,
+      "iqr": [
+        35.98,
+        118.98
+      ],
+      "min": 1.6,
+      "max": 217.29
+    }
+  },
+  "upenn_gbm": {
+    "dataset": "UPENN-GBM",
+    "n_subjects_total": 671,
+    "subjects_sampled": 30,
+    "modality_completeness": {
+      "T1w": 100.0,
+      "ce-T1w": 100.0,
+      "T2w": 100.0,
+      "FLAIR": 100.0
+    },
+    "shapes": {
+      "240\u00d7240\u00d7155": 120
+    },
+    "seg_label_counts": {
+      "1": 29,
+      "2": 29,
+      "4": 29
+    },
+    "missing_modality_subjects": {},
+    "errors": [],
+    "snr_summary": {
+      "median": 7.32,
+      "iqr": [
+        6.41,
+        8.43
+      ],
+      "min": 4.61,
+      "max": 12.41
+    },
+    "dropout_summary": {
+      "median": 0.185,
+      "max": 0.323,
+      "n_above_20pct": 44
+    },
+    "seg_volume_summary_cc": {
+      "median": 72.12,
+      "iqr": [
+        30.68,
+        106.04
+      ],
+      "min": 15.59,
+      "max": 235.96
+    }
+  },
+  "ucsd_ptgbm": {
+    "dataset": "PKG-UCSD-PTGBM-v1",
+    "n_subjects_total": 184,
+    "subjects_sampled": 30,
+    "modality_completeness": {
+      "T1w": 100.0,
+      "ce-T1w": 100.0,
+      "T2w": 100.0,
+      "FLAIR": 100.0
+    },
+    "shapes": {
+      "256\u00d7256\u00d7256": 120
+    },
+    "seg_label_counts": {
+      "1": 19,
+      "2": 30,
+      "3": 30,
+      "4": 24
+    },
+    "missing_modality_subjects": {},
+    "errors": [],
+    "snr_summary": {
+      "median": 5.98,
+      "iqr": [
+        5.42,
+        8.46
+      ],
+      "min": 4.44,
+      "max": 12.02
+    },
+    "dropout_summary": {
+      "median": 0.434,
+      "max": 0.527,
+      "n_above_20pct": 120
+    },
+    "seg_volume_summary_cc": {
+      "median": 44.08,
+      "iqr": [
+        25.94,
+        86.66
+      ],
+      "min": 10.51,
+      "max": 187.76
+    }
+  },
+  "acrin_fmiso": {
+    "dataset": "ACRIN-FMISO (ACRIN-6684)",
+    "n_subjects_total": 45,
+    "subjects_sampled": 10,
+    "modality_completeness": {},
+    "shapes": {
+      "256\u00d7256": 1
+    },
+    "seg_label_counts": {},
+    "missing_modality_subjects": {},
+    "errors": [],
+    "dicom_summary": {
+      "total_sessions": 84,
+      "total_series": 795,
+      "avg_sessions_per_subject": 8.4,
+      "series_type_distribution": {
+        "other": 279,
+        "DCE": 47,
+        "DWI/DTI": 107,
+        "DSC": 18,
+        "ce-T1w": 80,
+        "ROI/Mask": 25,
+        "T1w": 31,
+        "FLAIR": 113,
+        "T2w": 74,
+        "BOLD": 7,
+        "PET": 14
+      },
+      "roi_mask_series": 25,
+      "manufacturers": {
+        "Philips Medical Systems": 1
+      }
+    }
+  },
+  "acrin_dsc": {
+    "dataset": "ACRIN-DSC-MR-Brain (ACRIN-6677)",
+    "n_subjects_total": 123,
+    "subjects_sampled": 10,
+    "modality_completeness": {},
+    "shapes": {
+      "256\u00d7256": 1
+    },
+    "seg_label_counts": {},
+    "missing_modality_subjects": {},
+    "errors": [],
+    "dicom_summary": {
+      "total_sessions": 45,
+      "total_series": 545,
+      "avg_sessions_per_subject": 4.5,
+      "series_type_distribution": {
+        "other": 204,
+        "ce-T1w": 58,
+        "T1w": 29,
+        "T2w": 51,
+        "FLAIR": 60,
+        "DWI/DTI": 126,
+        "DSC": 6,
+        "DCE": 11
+      },
+      "roi_mask_series": 0,
+      "manufacturers": {
+        "GE MEDICAL SYSTEMS": 1
+      }
+    }
+  }
+}

@@ -31,6 +31,7 @@ dependencies = [
   "templateflow",
   "dcm2niix",
   "picsl-greedy",
+  "psutil>=5.4",
   "torch",
   "torchvision",
   "torchaudio"

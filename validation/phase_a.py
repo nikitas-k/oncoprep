@@ -20,7 +20,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 import resource
 import subprocess
 import sys
@@ -33,13 +32,11 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 
 from .config import (
-    BIDS_DERIVATIVES_OPTIONAL,
-    BIDS_DERIVATIVES_REQUIRED,
     DATASETS,
     SAP,
     get_phase_dir,
 )
-from .stats import mcnemar_test, wilson_ci
+from .stats import wilson_ci
 
 
 # ---------------------------------------------------------------------------
@@ -131,7 +128,6 @@ def check_bids_compliance(
     issues: List[str] = []
 
     # Build expected path
-    ses_part = f"ses-{session}" if session else ""
     sub_dir = output_dir / f"sub-{subject}"
     if session:
         sub_dir = sub_dir / f"ses-{session}"
@@ -225,7 +221,7 @@ def run_single_case(
     )
 
     cmd = [
-        sys.executable, "-m", "oncoprep.cli",
+        "oncoprep",
         str(bids_dir),
         str(output_dir),
         "participant",
@@ -272,7 +268,7 @@ def run_single_case(
         result.failure_category = "docker_timeout"
         result.error_message = f"Timed out after {timeout_sec}s"
 
-    except Exception as exc:
+    except Exception:
         result.runtime_sec = time.monotonic() - start
         result.status = "hard_fail"
         result.failure_category = "unknown"

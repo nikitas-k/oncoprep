@@ -14,7 +14,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Dict, List
 
 import matplotlib
 matplotlib.use("Agg")
@@ -211,9 +211,6 @@ def figure4_segmentation_performance(
     ax_b = fig.add_subplot(gs[1])
     for d in all_data:
         lw = d.get("lesion_wise", {})
-        x_vals = []
-        y_vals = []
-        colors = []
         labels_used = set()
         for i, region in enumerate(regions):
             info = lw.get(region, {}).get("dice", {})
@@ -243,7 +240,7 @@ def figure4_segmentation_performance(
             if bins_data:
                 bin_labels = list(bins_data.keys())
                 sens_vals = [bins_data[b] for b in bin_labels]
-                valid = [(l, v) for l, v in zip(bin_labels, sens_vals) if v is not None]
+                valid = [(lbl, v) for lbl, v in zip(bin_labels, sens_vals) if v is not None]
                 if valid:
                     labels, vals = zip(*valid)
                     ax_c.plot(range(len(labels)), vals, "o-",
@@ -511,8 +508,6 @@ def figure7_human_factors(
 
     # --- Panel B: Edit magnitude ---
     ax_b = fig.add_subplot(gs[1])
-    annotations = d.get("annotations", [])
-    assisted_annots = [a for a in annotations if a.get("condition") == "assisted"]
     # We'd plot distribution of edit magnitudes here
     em = d.get("edit_magnitude_median", 0)
     em_ci = d.get("edit_magnitude_ci", [0, 0])

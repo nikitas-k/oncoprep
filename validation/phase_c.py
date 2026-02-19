@@ -20,10 +20,9 @@ from __future__ import annotations
 
 import argparse
 import json
-import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import nibabel as nib
 import numpy as np
@@ -32,13 +31,11 @@ from .config import (
     DATASETS,
     PERTURBATIONS,
     REGION_MAP,
-    SAP,
-    PerturbationSpec,
     get_phase_dir,
 )
-from .metrics import compute_patient_metrics, evaluate_case
-from .phase_a import CaseResult, run_single_case
-from .stats import bootstrap_ci, degradation_auc, paired_bootstrap_delta
+from .metrics import evaluate_case
+from .phase_a import run_single_case
+from .stats import degradation_auc
 
 
 # ---------------------------------------------------------------------------
@@ -244,7 +241,7 @@ def create_perturbed_bids(
                 "gaussian_noise", "bias_field"
             ) else perturb_fn(img, level_value)
             nib.save(perturbed_img, str(out_path))
-        except Exception as e:
+        except Exception:
             # Copy original on failure
             import shutil
             shutil.copy2(nii_path, out_path)

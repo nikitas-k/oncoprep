@@ -21,7 +21,7 @@ import nibabel as nib
 import numpy as np
 from scipy import ndimage
 
-from .config import LABEL_MAP, REGION_MAP, VOLUME_BINS
+from .config import REGION_MAP
 
 
 # ---------------------------------------------------------------------------

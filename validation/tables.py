@@ -16,11 +16,10 @@ import csv
 import json
 from io import StringIO
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Dict, List
 
-import numpy as np
 
-from .config import DATASETS, PERTURBATIONS, REGION_MAP
+from .config import DATASETS, REGION_MAP
 
 
 def _load_json(path: Path) -> dict:
@@ -48,7 +47,7 @@ def table1_cohort_summary(output_dir: Path, fmt: str = "latex") -> None:
     """
     rows = []
     for key, ds in DATASETS.items():
-        labels_str = ", ".join(str(l) for l in ds.label_set)
+        labels_str = ", ".join(str(lbl) for lbl in ds.label_set)
         rows.append([
             ds.short_name,
             str(ds.n_subjects),
