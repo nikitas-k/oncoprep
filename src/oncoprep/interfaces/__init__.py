@@ -17,7 +17,7 @@ try:
         'sub-{subject}/{datatype<figures>}/sub-{subject}'
         '[_ses-{session}][_acq-{acquisition}][_rec-{reconstruction}][_run-{run}]'
         '[_space-{space}][_cohort-{cohort}][_desc-{desc}]'
-        '_{suffix<features>}{extension<.html|.svg>|.html}',
+        '_{suffix<features|report>}{extension<.html|.svg|.txt>|.html}',
     )
 
     class DerivativesDataSink(_NiworkflowsDerivativesDataSink):

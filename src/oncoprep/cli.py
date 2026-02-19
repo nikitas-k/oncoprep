@@ -778,6 +778,11 @@ def build_workflow(opts, retval):
         if nprocs is None or nprocs < 1:
             nprocs = cpu_count()
         plugin_settings['plugin_args']['n_procs'] = nprocs
+
+    # --nprocs 1: use Linear plugin so GPU devices (MPS/CUDA) are available
+    # in the main process instead of a spawned worker.
+    if nprocs == 1 and plugin_settings.get('plugin') == 'MultiProc':
+        plugin_settings = {'plugin': 'Linear', 'plugin_args': {}}
     
     if opts.mem_gb:
         plugin_settings['plugin_args']['memory_gb'] = opts.mem_gb

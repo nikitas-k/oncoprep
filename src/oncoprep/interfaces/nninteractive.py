@@ -428,6 +428,12 @@ class NNInteractiveSegmentation(SimpleInterface):
             )
         return model_dir
 
+    @staticmethod
+    def _in_subprocess() -> bool:
+        """Return True when running inside a spawned/forked worker process."""
+        import multiprocessing
+        return multiprocessing.current_process().name != 'MainProcess'
+
     def _init_session(self, model_dir: str):
         """Initialize an nnInteractive inference session."""
         os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
@@ -445,6 +451,19 @@ class NNInteractiveSegmentation(SimpleInterface):
                 device = torch.device('cpu')
         else:
             device = torch.device(device_str)
+
+        # MPS is fundamentally incompatible with spawned sub-processes
+        # (Nipype MultiProc plugin).  The Metal backend cannot be
+        # initialised outside the main process and aborts on any
+        # .to('mps') / torch.load(map_location='mps') call.
+        # Fall back to CPU when we detect a worker subprocess.
+        if device.type == 'mps' and self._in_subprocess():
+            LOGGER.warning(
+                'nnInteractive: MPS unavailable in worker subprocess — '
+                'falling back to CPU.  Run with --nprocs 1 to use the '
+                'Linear plugin and enable MPS acceleration.'
+            )
+            device = torch.device('cpu')
 
         LOGGER.info('nnInteractive device: %s', device)
 

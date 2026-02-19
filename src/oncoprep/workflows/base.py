@@ -24,9 +24,9 @@
 
 from __future__ import annotations
 
+import copy
 import os
 import sys
-from copy import deepcopy
 from pathlib import Path
 from typing import List, Optional, Union
 
@@ -40,8 +40,18 @@ from niworkflows.interfaces.bids import BIDSInfo
 from niworkflows.utils.misc import fix_multi_T1w_source_name
 from bids.layout import Query
 
-from .outputs import init_anat_reports_wf
+from oncoprep import __version__
+from oncoprep.workflows.segment import init_anat_seg_wf
+from oncoprep.workflows.nninteractive import init_nninteractive_seg_wf
+from oncoprep.workflows.brats_outputs import init_ds_tumor_seg_wf
+from oncoprep.workflows.radiomics import init_anat_radiomics_wf
+from oncoprep.workflows.vasari import init_vasari_wf
+# NOTE: MRIQC integration is temporarily disabled (non-functional).
+# from oncoprep.workflows.mriqc import init_mriqc_wf
+from ..interfaces import DerivativesDataSink, OncoprepBIDSDataGrabber
+from ..interfaces.reports import SubjectSummary, AboutSummary
 from ..utils.labels import split_seg_labels
+from .anatomical import init_anat_preproc_wf
 
 
 def _pick_first(val):
@@ -52,7 +62,6 @@ def _pick_first(val):
 
 # Custom BIDS queries for OncoPrep (adds t1ce for neuro-oncology)
 # Uses ceagent entity per BIDS spec: T1ce = T1w with contrast agent (e.g., gadolinium)
-import copy
 ONCOPREP_BIDS_QUERIES = copy.deepcopy(DEFAULT_BIDS_QUERIES)
 # T1ce: T1w images WITH ceagent entity (contrast-enhanced)
 ONCOPREP_BIDS_QUERIES['t1ce'] = {
@@ -68,18 +77,6 @@ ONCOPREP_BIDS_QUERIES['t1w'] = {
     'ceagent': Query.NONE,  # Must NOT have ceagent entity
     'part': ['mag', None],
 }
-
-from oncoprep import __version__
-from oncoprep.workflows.segment import init_anat_seg_wf
-from oncoprep.workflows.nninteractive import init_nninteractive_seg_wf
-from oncoprep.workflows.brats_outputs import init_ds_tumor_seg_wf
-from oncoprep.workflows.radiomics import init_anat_radiomics_wf
-from oncoprep.workflows.vasari import init_vasari_wf
-# NOTE: MRIQC integration is temporarily disabled (non-functional).
-# from oncoprep.workflows.mriqc import init_mriqc_wf
-from ..interfaces import DerivativesDataSink, OncoprepBIDSDataGrabber
-from ..interfaces.reports import SubjectSummary, AboutSummary
-from .anatomical import init_anat_preproc_wf
 
 
 LOGGER = logging.getLogger('nipype.workflow')
@@ -124,6 +121,13 @@ REFERENCES = """\
     multi-parametric MRI radiomic features and covariate shift in
     multi-institutional glioblastoma datasets," *Phys. Med. Biol.*, vol. 64,
     no. 16, p. 165011, 2019. https://doi.org/10.1088/1361-6560/ab2f44
+14. J.K. Ruffle et al., "VASARI-auto: Equitable, efficient, and economical
+    featurisation of glioma MRI," *NeuroImage: Clinical*, vol. 44, p. 103668,
+    2024. https://doi.org/10.1016/j.nicl.2024.103668
+15. D.A. Gutman et al., "MR Imaging Predictors of Molecular Profile and
+    Survival: Multi-institutional Study of the TCGA Glioblastoma Data Set,"
+    *Radiology*, vol. 267, no. 2, pp. 560–569, 2013.
+    https://doi.org/10.1148/radiol.13120118
 """
 
 
@@ -281,7 +285,7 @@ to workflows in *OncoPrep*'s documentation]\
             output_dir, 'oncoprep', f'sub-{subject_id}', 'log', run_uuid
         )
         for node in single_subject_wf._get_all_nodes():
-            node.config = deepcopy(single_subject_wf.config)
+            node.config = copy.deepcopy(single_subject_wf.config)
 
         oncoprep_wf.add_nodes([single_subject_wf])
 

@@ -211,10 +211,14 @@ HuggingFace.  No Docker containers or BraTS-specific fine-tuning were required.
     )
 
     # Core segmentation node
+    # run_without_submitting keeps this in the main process so that
+    # MPS (Apple Metal) is available — Metal cannot initialise inside
+    # the spawned workers used by MultiProc/forkserver.
     seg_node = pe.Node(
         NNInteractiveSegmentation(device=device),
         name='nninteractive_seg',
         mem_gb=8,
+        run_without_submitting=True,
     )
     if model_dir is not None:
         seg_node.inputs.model_dir = str(model_dir)

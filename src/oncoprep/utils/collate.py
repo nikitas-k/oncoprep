@@ -55,6 +55,8 @@ def collate_subject_report(output_dir, subject_id, version,
     summary_html = about_html = conform_html = ''
     dseg_svg_name = tumor_svg_name = ''
     radiomics_html = ''
+    vasari_html = ''
+    radiology_html = ''
     norm_figures = []  # [(caption, filename), ...]
 
     if figures_dir.is_dir():
@@ -70,6 +72,10 @@ def collate_subject_report(output_dir, subject_id, version,
                 tumor_svg_name = fname
             elif fname.endswith('_desc-radiomics_features.html'):
                 radiomics_html = _read(fpath)
+            elif fname.endswith('_desc-vasari_features.html'):
+                vasari_html = _read(fpath)
+            elif fname.endswith('_desc-vasariRadiology_report.html'):
+                radiology_html = _read(fpath)
             elif fname.endswith('_dseg.svg') and 'tumor' not in fname:
                 dseg_svg_name = fname
             elif fname.endswith('.svg') and 'space-' in fname:
@@ -227,6 +233,50 @@ def collate_subject_report(output_dir, subject_id, version,
         )
         sections.append(sec)
 
+    # -- VASARI Features --
+    if vasari_html or radiology_html:
+        sec = '    <div id="VASARI">\n'
+        sec += '    <h1 class="sub-report-title">VASARI</h1>\n'
+        if vasari_html:
+            sec += (
+                '        <div id="datatype-figures_desc-vasari_suffix-features">\n'
+                '<h3 class="run-title">Automated VASARI Feature Assessment</h3>'
+                '<p class="elem-caption">VASARI (Visually Accessible Rembrandt '
+                'Images) features automatically extracted from the tumor '
+                'segmentation mask. Features describe tumor morphology, '
+                'location, and enhancement characteristics per the VASARI '
+                'feature set.</p>\n'
+                '<style>\n'
+                '.vasari-report { font-size: 0.9em; }\n'
+                '.vasari-features { width: 100%; border-collapse: collapse; '
+                'margin: 10px 0 20px; }\n'
+                '.vasari-features th, .vasari-features td { '
+                'padding: 6px 12px; border: 1px solid #dee2e6; }\n'
+                '.vasari-features th { background: #f8f9fa; text-align: left; '
+                'font-weight: 600; }\n'
+                '.vasari-unsupported { color: #999; }\n'
+                '.vasari-meta { color: #6c757d; font-size: 0.9em; '
+                'margin-bottom: 12px; }\n'
+                '.vasari-disclaimer { color: #6c757d; font-size: 0.85em; '
+                'font-style: italic; margin-top: 16px; }\n'
+                '</style>\n'
+                '                    ' + vasari_html.strip() + '\n'
+                '</div>\n'
+            )
+        if radiology_html:
+            sec += (
+                '        <div id="datatype-figures_desc-vasariRadiology_suffix-report">\n'
+                '<h3 class="run-title">AI Radiology Report</h3>'
+                '<p class="elem-caption">Structured radiology report '
+                'generated from VASARI features using a large language model. '
+                'This report is for research purposes only and is not '
+                'intended for clinical use.</p>\n'
+                '                    ' + radiology_html.strip() + '\n'
+                '</div>\n'
+            )
+        sec += '    </div>\n'
+        sections.append(sec)
+
     # -- About --
     sec = '    <div id="About">\n'
     sec += '    <h1 class="sub-report-title">About</h1>\n'
@@ -294,6 +344,12 @@ def collate_subject_report(output_dir, subject_id, version,
             '        <li class="nav-item">'
             '<a class="nav-link" href="#Radiomics">'
             'Radiomics</a></li>\n'
+        )
+    if vasari_html or radiology_html:
+        nav_items += (
+            '        <li class="nav-item">'
+            '<a class="nav-link" href="#VASARI">'
+            'VASARI</a></li>\n'
         )
     nav_items += (
         '        <li class="nav-item">'
