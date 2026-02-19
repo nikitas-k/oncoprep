@@ -20,7 +20,6 @@ Usage examples:
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 import time
 from pathlib import Path
@@ -31,7 +30,6 @@ from .config import (
     DATASETS,
     PERTURBATIONS,
     SAP,
-    get_output_root,
 )
 
 
@@ -200,22 +198,22 @@ def _print_config(dataset_key: Optional[str], phases: List[str]) -> None:
     """Print configuration summary for dry run."""
     print("OncoPrep Validation Protocol — DRY RUN")
     print(f"\n  Phases requested: {', '.join(phases)}")
-    print(f"\n  Available datasets:")
+    print("\n  Available datasets:")
     for key, ds in DATASETS.items():
         marker = " ← selected" if key == dataset_key else ""
         print(f"    {key}: {ds.short_name} (n={ds.n_subjects}){marker}")
-    print(f"\n  Comparators:")
+    print("\n  Comparators:")
     for key, comp in COMPARATORS.items():
         print(f"    {key}: {comp.description}")
-    print(f"\n  SAP config:")
+    print("\n  SAP config:")
     print(f"    Bootstrap iterations: {SAP.n_bootstrap}")
     print(f"    CI level: {SAP.ci_level}")
     print(f"    Random seed: {SAP.random_seed}")
     print(f"    Perturbation types: {SAP.perturbation_types}")
-    print(f"\n  Perturbation specs:")
+    print("\n  Perturbation specs:")
     for name, spec in PERTURBATIONS.items():
         print(f"    {name}: {spec.levels} ({spec.unit})")
-    print(f"\n  Sample size heuristics:")
+    print("\n  Sample size heuristics:")
     from .stats import sample_size_ci_proportion, sample_size_paired_continuous
     n_prop = sample_size_ci_proportion(target_width=2 * SAP.target_ci_width_proportion)
     n_cont = sample_size_paired_continuous(SAP.detectable_effect, SAP.assumed_sigma_delta)

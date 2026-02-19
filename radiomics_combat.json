@@ -1,0 +1,32 @@
+{
+  "NCR": {
+    "label": 1,
+    "name": "Necrotic Core (NCR)",
+    "features": {
+      "firstorder": {
+        "Mean": 100.5,
+        "StandardDeviation": 20.3,
+        "Entropy": 4.2
+      },
+      "shape": {
+        "MeshVolume": 1500.0,
+        "Sphericity": 0.85
+      }
+    }
+  },
+  "ED": {
+    "label": 2,
+    "name": "Peritumoral Edema (ED)",
+    "features": {
+      "firstorder": {
+        "Mean": 80.2,
+        "StandardDeviation": 15.1,
+        "Entropy": 3.8
+      },
+      "shape": {
+        "MeshVolume": 5000.0,
+        "Sphericity": 0.6
+      }
+    }
+  }
+}

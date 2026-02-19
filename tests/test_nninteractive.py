@@ -184,7 +184,7 @@ class TestNNInteractiveWorkflow:
         # Nipype's write_graph internally validates connections
         # A simpler check: every node is reachable from inputnode
         graph = wf._graph
-        assert len(graph.nodes) == 5
+        assert len(graph.nodes) == 6  # inputnode, seg, outputnode, convert_old, convert_new, resample_seg_to_std
         assert len(graph.edges) >= 5  # at least 5 connections
 
 

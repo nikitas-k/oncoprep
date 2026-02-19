@@ -29,11 +29,10 @@ import numpy as np
 from .config import (
     DATASETS,
     REGION_MAP,
-    SAP,
     get_phase_dir,
 )
 from .metrics import extract_volumes_cc
-from .stats import bland_altman, bootstrap_ci, icc_31
+from .stats import bland_altman, icc_31
 
 
 # ---------------------------------------------------------------------------
@@ -381,12 +380,12 @@ def main() -> None:
     print(f"Phase D results — {args.dataset} (n={results.n_cases})")
     print(f"{'='*60}")
 
-    print(f"\n  Bland–Altman (volume agreement):")
+    print("\n  Bland–Altman (volume agreement):")
     for region, ba in results.bland_altman.items():
         print(f"    {region}: mean diff = {ba['mean_diff']:.2f} cc, "
               f"LoA = [{ba['loa_lower']:.2f}, {ba['loa_upper']:.2f}]")
 
-    print(f"\n  ICC (pred vs GT):")
+    print("\n  ICC (pred vs GT):")
     for region, ic in results.icc.items():
         print(f"    {region}: ICC = {ic['icc']:.3f} "
               f"[{ic['ci_lower']:.3f}, {ic['ci_upper']:.3f}]")

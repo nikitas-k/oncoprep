@@ -301,3 +301,34 @@ oncoprep /path/to/bids /path/to/derivatives participant \
 
 See {doc}`docker` for container runtime configuration and `oncoprep-models`
 for managing model images.
+
+
+## Template-Space Resampling
+
+Both segmentation backends (nnInteractive and Docker ensemble) produce tumor
+segmentation masks in the **native T1w space**.  When a downstream workflow
+requires the segmentation in a standard template space (e.g. VASARI feature
+extraction), the segmentation workflow automatically resamples the native-space
+labels into the template using the `anat2std_xfm` transform from the
+anatomical preprocessing workflow.
+
+The resampling is performed with ANTs `ApplyTransforms` using
+**nearest-neighbor interpolation** (to preserve discrete label values) and is
+exposed on the segmentation workflow's `outputnode` as `tumor_seg_std`.
+
+### Supported template spaces
+
+| OncoPrep `--output-spaces` | Atlas Space | Reference Image |
+|-----------------------------|-------------|-----------------|
+| `MNI152NLin2009cAsym` | `mni152` | `MNI152_T1_1mm_brain.nii.gz` |
+| `MNI152NLin6Asym` | `mni152` | `MNI152_T1_1mm_brain.nii.gz` |
+| `SRI24` | `sri24` | `MNI152_in_SRI24_T1_1mm_brain.nii.gz` |
+
+### Segmentation workflow outputs
+
+| Field | Description |
+|-------|-------------|
+| `tumor_seg` | Multi-label segmentation in new BraTS convention (native space) |
+| `tumor_seg_old` | Multi-label segmentation in old BraTS convention (native space) |
+| `tumor_seg_std` | Multi-label segmentation in old BraTS convention, **resampled to template space** |
+| `tumor_mask` | Binary whole-tumor mask (native space) |

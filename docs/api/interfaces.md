@@ -42,6 +42,20 @@ Nipype interfaces wrap atomic processing steps. OncoPrep extends
    PyRadiomicsFeatureExtraction
 ```
 
+## VASARI
+
+```{eval-rst}
+.. module:: oncoprep.interfaces.vasari
+.. autosummary::
+   :toctree: _generated
+   :nosignatures:
+
+   VASARIFeatureExtraction
+   VASARIRadiologyReport
+   get_atlas_dir
+   get_atlas_reference
+```
+
 ## FreeSurfer *(planned)*
 
 :::{note}

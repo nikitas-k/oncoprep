@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -34,10 +34,7 @@ from .config import (
     get_phase_dir,
 )
 from .metrics import (
-    compute_lesion_wise_metrics,
-    compute_patient_metrics,
     evaluate_case,
-    extract_region,
 )
 from .stats import bootstrap_ci, paired_bootstrap_delta
 
@@ -328,9 +325,9 @@ def save_phase_b_results(results: PhaseBResults, output_path: Path) -> None:
 
 def _json_default(obj: Any) -> Any:
     """Handle non-serialisable types."""
-    if isinstance(obj, (np.integer,)):
+    if isinstance(obj, np.integer):
         return int(obj)
-    if isinstance(obj, (np.floating,)):
+    if isinstance(obj, np.floating):
         return float(obj)
     if isinstance(obj, np.ndarray):
         return obj.tolist()
@@ -407,7 +404,7 @@ def main() -> None:
                   f"[{hd95_info['ci_lower']:.2f}, {hd95_info['ci_upper']:.2f}]")
 
     if results.lesion_wise:
-        print(f"\n  Lesion-wise:")
+        print("\n  Lesion-wise:")
         for region, metrics in results.lesion_wise.items():
             dice_info = metrics.get("dice", {})
             if dice_info:
@@ -415,7 +412,7 @@ def main() -> None:
                       f"[{dice_info['ci_lower']:.3f}, {dice_info['ci_upper']:.3f}]")
 
     if results.volume_bin_sensitivity:
-        print(f"\n  Volume-bin sensitivity:")
+        print("\n  Volume-bin sensitivity:")
         for region, bins in results.volume_bin_sensitivity.items():
             for bin_label, sens in bins.items():
                 if np.isfinite(sens):

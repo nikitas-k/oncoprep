@@ -24,7 +24,7 @@ oncoprep <bids_dir> <output_dir> <analysis_level> [options]
 |----------|-------------|
 | `bids_dir` | Root folder of a valid BIDS dataset |
 | `output_dir` | Output path for derivatives and reports |
-| `analysis_level` | `participant` (subject-level processing) |
+| `analysis_level` | `participant` (subject-level) or `group` (cohort-level ComBat) |
 
 ### Key options
 
@@ -82,6 +82,34 @@ oncoprep <bids_dir> <output_dir> <analysis_level> [options]
 
 ```
 --run-radiomics       Enable feature extraction (implies --run-segmentation)
+```
+
+#### ComBat Harmonization (group-level)
+
+These flags are used with `analysis_level = group`.  See
+{doc}`group_combat` for a full guide.
+
+```
+--combat-batch CSV    CSV mapping subjects to scanner/site batches
+                      (columns: subject_id, batch, optional covariates)
+
+--combat-parametric   Use parametric empirical Bayes priors (default)
+
+--combat-nonparametric
+                      Use non-parametric empirical Bayes
+
+--generate-combat-batch
+                      Auto-generate batch CSV from BIDS JSON sidecars
+                      (Manufacturer, ManufacturerModelName,
+                      MagneticFieldStrength, age, sex)
+```
+
+#### VASARI
+
+```
+--run-vasari          Enable automated VASARI feature extraction and
+                      radiology report generation
+                      (requires vasari-auto; implies --run-segmentation)
 ```
 
 #### Quality control (temporarily disabled)

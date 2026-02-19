@@ -65,19 +65,109 @@ class DatasetSpec:
 
 
 DATASETS: Dict[str, DatasetSpec] = {
+    # ---- BraTS 2024 challenge datasets ----
+    "brats_gli": DatasetSpec(
+        name="BraTS-GLI-2024: Adult Glioma",
+        short_name="BraTS-GLI",
+        n_subjects=1621,
+        n_sessions=1621,
+        modalities=["T1w", "ce-T1w", "T2w", "FLAIR"],
+        label_set=[1, 2, 3, 4],
+        ground_truth_type="Expert annotations (BraTS challenge, training set with labels)",
+        field_strength="mixed",
+        vendor="mixed",
+        doi_or_url="https://www.synapse.org/Synapse:syn53708249",
+        split_method="5-fold-CV",
+        notes=(
+            "1350 subjects in training_data1 + 271 in training_data_additional. "
+            "Grid 182\u00d7218\u00d7182 (SRI24 atlas space). Seg dtype float32. "
+            "Labels: 1=NETC, 2=ED, 3=ET, 4=RC (4 present in ~80% of subjects)."
+        ),
+    ),
+    "brats_men": DatasetSpec(
+        name="BraTS-MEN-2024: Meningioma",
+        short_name="BraTS-MEN",
+        n_subjects=1000,
+        n_sessions=1000,
+        modalities=["T1w", "ce-T1w", "T2w", "FLAIR"],
+        label_set=[1, 2, 3],
+        ground_truth_type="Expert annotations (BraTS challenge, training set with labels)",
+        field_strength="mixed",
+        vendor="mixed",
+        doi_or_url="https://www.synapse.org/Synapse:syn53708249",
+        split_method="5-fold-CV",
+        notes="Grid 240×240×155. Seg dtype uint16. Meningioma-specific labels.",
+    ),
+    "brats_met": DatasetSpec(
+        name="BraTS-MET-2024: Brain Metastases",
+        short_name="BraTS-MET",
+        n_subjects=652,
+        n_sessions=652,
+        modalities=["T1w", "ce-T1w", "T2w", "FLAIR"],
+        label_set=[1, 2, 3],
+        ground_truth_type="Expert annotations (BraTS challenge, training set with labels)",
+        field_strength="mixed",
+        vendor="mixed",
+        doi_or_url="https://www.synapse.org/Synapse:syn53708249",
+        split_method="5-fold-CV",
+        notes=(
+            "328 subjects in Training_1 + 324 in Training_2. "
+            "Grid 240×240×155. Seg dtype float64."
+        ),
+    ),
+    # ---- Institutional / public datasets ----
     "ucsf_pdgm": DatasetSpec(
         name="UCSF Preoperative Diffuse Glioma MRI (UCSF-PDGM)",
         short_name="UCSF-PDGM",
-        n_subjects=501,
-        n_sessions=501,
+        n_subjects=496,
+        n_sessions=496,
         modalities=["T1w", "ce-T1w", "T2w", "FLAIR"],
-        label_set=[1, 2, 3],
+        label_set=[1, 2, 4],
         ground_truth_type="Expert-refined BraTS-workflow segmentations",
         field_strength="3T",
         vendor="mixed",
         doi_or_url="https://doi.org/10.1148/ryai.220058",
         split_method="5-fold stratified by tumour grade",
-        notes="Pre-operative, standardised protocol, 501 after QC",
+        notes=(
+            "Pre-operative, standardised protocol. 496 subjects (was 501, QC removed 5). "
+            "Grid 240×240×155. Old BraTS labelling (1=NCR, 2=ED, 4=ET). "
+            "Also has DTI, ASL, SWI and brain parcellations."
+        ),
+    ),
+    "upenn_gbm": DatasetSpec(
+        name="UPENN-GBM: University of Pennsylvania Glioblastoma",
+        short_name="UPENN-GBM",
+        n_subjects=671,
+        n_sessions=671,
+        modalities=["T1w", "ce-T1w", "T2w", "FLAIR"],
+        label_set=[1, 2, 4],
+        ground_truth_type="Automated + manually-refined segmentations (147 manual, 611 automated),",
+        field_strength="mixed",
+        vendor="mixed",
+        doi_or_url="https://doi.org/10.7937/TCIA.709X-DN49",
+        split_method="5-fold-CV",
+        notes=(
+            "611 automated segmentations, 147 manual. Grid 240×240×155. "
+            "Old BraTS labelling (1=NCR, 2=ED, 4=ET). "
+            "Structural in NIfTI-files/images_structural/, segs in images_segm/ and automated_segm/."
+        ),
+    ),
+    "ucsd_ptgbm": DatasetSpec(
+        name="UCSD Post-Treatment GBM (UCSD-PTGBM-v1)",
+        short_name="UCSD-PTGBM",
+        n_subjects=184,
+        n_sessions=184,
+        modalities=["T1w", "ce-T1w", "T2w", "FLAIR"],
+        label_set=[1, 2, 3, 4],
+        ground_truth_type="BraTS-style tumor segmentation + cellular tumor maps",
+        field_strength="mixed",
+        vendor="mixed",
+        doi_or_url="https://doi.org/10.7937/k6s5-mq14",
+        split_method="Patient-level 5-fold (multi-session patients exist)",
+        notes=(
+            "Post-treatment GBM, some patients have multiple sessions. "
+            "Grid 256×256×256, oblique affine. Also has DWI, RSI, DSC, ASL, SWAN."
+        ),
     ),
     "mu_glioma_post": DatasetSpec(
         name="MU-Glioma Post: longitudinal post-treatment glioma",
@@ -92,6 +182,159 @@ DATASETS: Dict[str, DatasetSpec] = {
         doi_or_url="https://doi.org/10.1038/s41597-025-06011-7",
         split_method="Patient-level 5-fold (no timepoint leakage)",
         notes="Hardest domain shift — post-treatment, includes resection cavity (label 4)",
+    ),
+    # ---- ACRIN clinical trial datasets (DICOM source, require dcm2niix) ----
+    "acrin_fmiso": DatasetSpec(
+        name="ACRIN-6684: FMISO-PET/MR for newly diagnosed GBM",
+        short_name="ACRIN-FMISO",
+        n_subjects=46,
+        n_sessions=430,
+        modalities=["T1w", "ce-T1w", "T2w", "FLAIR", "DWI", "DSC", "DCE", "PET"],
+        label_set=[],  # ROIs are binary masks (HVC-Mask), not BraTS-style labels
+        ground_truth_type="Hand-drawn visit masks (HVC-Mask) + parametric ROIs (DeltaT1ROI)",
+        field_strength="mixed",
+        vendor="mixed",
+        doi_or_url="https://doi.org/10.7937/K9/TCIA.2018.7ICE1GHK",
+        split_method="leave-one-out (small N)",
+        notes=(
+            "DICOM source — requires dcm2niix conversion. "
+            "46 subjects (of 50 enrolled), ~9 sessions/subject. "
+            "103 ROI dirs: 51 HVC-Mask, 50 DeltaT1ROI, 20 TUMOR PERFUSION. "
+            "Multi-modal: MR + FMISO-PET + CT. Rich clinical metadata (29 CSVs). "
+            "256×256 matrix, 5 mm slice thickness. Siemens/GE/Philips multi-site."
+        ),
+    ),
+    "acrin_dsc": DatasetSpec(
+        name="ACRIN-6677: DSC-MR Perfusion for recurrent GBM",
+        short_name="ACRIN-DSC",
+        n_subjects=124,
+        n_sessions=566,
+        modalities=["T1w", "ce-T1w", "T2w", "FLAIR", "DWI", "DSC", "DCE"],
+        label_set=[],  # Only 3 subjects have any ROIs
+        ground_truth_type="Sparse ROIs (3 subjects only — not systematic)",
+        field_strength="mixed",
+        vendor="mixed",
+        doi_or_url="https://doi.org/10.7937/K9/TCIA.2016.JQEJZZQ8",
+        split_method="5-fold-CV",
+        notes=(
+            "DICOM source — requires dcm2niix conversion. "
+            "124 subjects, ~4.6 sessions/subject. Only 3 subjects have tumor ROIs. "
+            "Primarily useful for robustness/OOD testing (Phase C), not accuracy (Phase B). "
+            "256×256 matrix, 5 mm slice thickness. Predominantly GE, some Siemens."
+        ),
+    ),
+    # ---- Additional BraTS challenge datasets ----
+    "brats_ssa": DatasetSpec(
+        name="BraTS-SSA-2023: Sub-Saharan Africa Glioma",
+        short_name="BraTS-SSA",
+        n_subjects=60,
+        n_sessions=60,
+        modalities=["T1w", "ce-T1w", "T2w", "FLAIR"],
+        label_set=[1, 2, 3],
+        ground_truth_type="Expert annotations (BraTS challenge, training set with labels)",
+        field_strength="mixed",
+        vendor="mixed",
+        doi_or_url="https://www.synapse.org/Synapse:syn51156910",
+        split_method="leave-one-out (small N)",
+        notes=(
+            "60 subjects from sub-Saharan African sites. BraTS naming convention. "
+            "Important for geographic diversity / OOD testing. "
+            "Grid sizes likely heterogeneous across sites."
+        ),
+    ),
+    "brats_gli_pre": DatasetSpec(
+        name="BraTS2025-GLI-PRE: Pre-treatment Glioma 2025",
+        short_name="BraTS-GLI-PRE",
+        n_subjects=1251,
+        n_sessions=1251,
+        modalities=["T1w", "ce-T1w", "T2w", "FLAIR"],
+        label_set=[1, 2, 3],
+        ground_truth_type="Expert annotations (BraTS 2025 challenge, training set with labels)",
+        field_strength="mixed",
+        vendor="mixed",
+        doi_or_url="https://www.synapse.org/Synapse:syn64233756",
+        split_method="5-fold-CV",
+        notes=(
+            "1251 subjects, pre-treatment only (no resection cavity). "
+            "Overlapping subject IDs with BraTS-GLI-2024 but pre-treatment subset. "
+            "BraTS naming convention (t1c/t1n/t2f/t2w/seg)."
+        ),
+    ),
+    "brats_met_2025": DatasetSpec(
+        name="BraTS2025-MET: Brain Metastases 2025",
+        short_name="BraTS-MET-25",
+        n_subjects=1296,
+        n_sessions=1296,
+        modalities=["T1w", "ce-T1w", "T2w", "FLAIR"],
+        label_set=[1, 2, 3],
+        ground_truth_type="Expert annotations (BraTS 2025 challenge, training set with labels)",
+        field_strength="mixed",
+        vendor="mixed",
+        doi_or_url="https://www.synapse.org/Synapse:syn64233756",
+        split_method="5-fold-CV",
+        notes=(
+            "650 direct BraTS-MET subjects + 646 UCSD subjects in subdirectory. "
+            "2 corrected segmentation labels available. "
+            "BraTS naming convention. Superset of BraTS-MET-2024."
+        ),
+    ),
+    "brats_goat": DatasetSpec(
+        name="BraTS-GoAT-2024: Generalizable Across Tumours",
+        short_name="BraTS-GoAT",
+        n_subjects=1351,
+        n_sessions=1351,
+        modalities=["T1w", "ce-T1w", "T2w", "FLAIR"],
+        label_set=[1, 2, 3],
+        ground_truth_type="Expert annotations (BraTS GoAT challenge, training with GT)",
+        field_strength="mixed",
+        vendor="mixed",
+        doi_or_url="https://www.synapse.org/Synapse:syn53708249",
+        split_method="5-fold-CV",
+        notes=(
+            "1351 subjects with ground truth (+1138 without GT, excluded). "
+            "Mixed tumour types (glioma, meningioma, metastases). "
+            "Subject IDs have no session suffix (BraTS-GoAT-NNNNN). "
+            "BraTS naming convention."
+        ),
+    ),
+    # ---- TCIA datasets with segmentations ----
+    "glis_rt": DatasetSpec(
+        name="GLIS-RT: Glioma Radiotherapy",
+        short_name="GLIS-RT",
+        n_subjects=231,
+        n_sessions=231,
+        modalities=["T1w", "ce-T1w", "T2w", "FLAIR"],
+        label_set=[],  # RTSTRUCT contours (GTV/CTV), not voxel labels
+        ground_truth_type="Clinical RTSTRUCT contours (GTV, CTV) from radiation therapy planning",
+        field_strength="mixed",
+        vendor="mixed",
+        doi_or_url="https://doi.org/10.7937/E7TG-PG24",
+        split_method="5-fold-CV",
+        notes=(
+            "DICOM source with RTSTRUCT. 231 glioma subjects with GBM/AAC subtypes. "
+            "Tumor ROIs: GTV (gross tumour volume), CTV (clinical target volume). "
+            "Also has OARs (brainstem, eyes, optic nerves, etc.) and anatomical barriers. "
+            "Requires dcm2niix + RTSTRUCT→NIfTI conversion."
+        ),
+    ),
+    "lumiere": DatasetSpec(
+        name="LUMIERE: Longitudinal Brain Tumour Monitoring",
+        short_name="LUMIERE",
+        n_subjects=91,
+        n_sessions=300,  # approximate, multi-timepoint
+        modalities=["T1w", "ce-T1w", "T2w", "FLAIR"],
+        label_set=[0, 1, 2, 3],  # DeepBraTumIA labels; HD-GLIO uses [0,1,2]
+        ground_truth_type="Automated segmentations (DeepBraTumIA + HD-GLIO-AUTO)",
+        field_strength="mixed",
+        vendor="mixed",
+        doi_or_url="https://doi.org/10.7937/3RAG-D070",
+        split_method="Patient-level 5-fold (no timepoint leakage)",
+        notes=(
+            "91 patients, multi-timepoint longitudinal monitoring. "
+            "NIfTI source with two automated segmentation methods per session. "
+            "DeepBraTumIA: labels [0,1,2,3], HD-GLIO: labels [0,1,2]. "
+            "Grid 256×256×192. Expert ratings available in CSV."
+        ),
     ),
 }
 

@@ -33,10 +33,8 @@ import nibabel as nib
 import numpy as np
 
 from .config import (
-    DATASETS,
     REGION_MAP,
     SAP,
-    VOLUME_BINS,
     get_phase_dir,
 )
 from .metrics import dice_score, extract_region
@@ -543,18 +541,18 @@ def main() -> None:
         print(f"\n{'='*60}")
         print(f"Phase E results (n={results.n_cases} cases, {results.n_readers} readers)")
         print(f"{'='*60}")
-        print(f"  Time-to-acceptable (seconds):")
+        print("  Time-to-acceptable (seconds):")
         print(f"    Manual:   {results.time_manual_median:.0f} "
               f"[{results.time_manual_ci[0]:.0f}, {results.time_manual_ci[1]:.0f}]")
         print(f"    Assisted: {results.time_assisted_median:.0f} "
               f"[{results.time_assisted_ci[0]:.0f}, {results.time_assisted_ci[1]:.0f}]")
         print(f"    Delta:    {results.time_delta_median:.0f} "
               f"[{results.time_delta_ci[0]:.0f}, {results.time_delta_ci[1]:.0f}]")
-        print(f"  Likert (acceptability):")
+        print("  Likert (acceptability):")
         print(f"    Manual:   {results.likert_manual_median:.1f}")
         print(f"    Assisted: {results.likert_assisted_median:.1f}")
         if results.irv_manual:
-            print(f"  Inter-rater variability (mean pairwise Dice):")
+            print("  Inter-rater variability (mean pairwise Dice):")
             for region in results.irv_manual:
                 m = results.irv_manual.get(region, 0)
                 a = results.irv_assisted.get(region, 0)
