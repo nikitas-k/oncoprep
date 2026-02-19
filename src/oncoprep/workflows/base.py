@@ -74,6 +74,7 @@ from oncoprep.workflows.segment import init_anat_seg_wf
 from oncoprep.workflows.nninteractive import init_nninteractive_seg_wf
 from oncoprep.workflows.brats_outputs import init_ds_tumor_seg_wf
 from oncoprep.workflows.radiomics import init_anat_radiomics_wf
+from oncoprep.workflows.vasari import init_vasari_wf
 # NOTE: MRIQC integration is temporarily disabled (non-functional).
 # from oncoprep.workflows.mriqc import init_mriqc_wf
 from ..interfaces import DerivativesDataSink, OncoprepBIDSDataGrabber
@@ -147,6 +148,7 @@ def init_oncoprep_wf(
     deface: bool = False,
     run_segmentation: bool = False,
     run_radiomics: bool = False,
+    run_vasari: bool = False,
     run_qc: bool = False,
     seg_model_path: Optional[Path] = None,
     default_seg: bool = False,
@@ -195,6 +197,10 @@ def init_oncoprep_wf(
         Apply mri_deface to remove facial features for privacy (default: False)
     run_segmentation : bool
         Run tumor segmentation step (default: False, requires Docker; GPU used by default if available)
+    run_vasari : bool
+        Run automated VASARI feature extraction and radiology report
+        generation (default: False, requires vasari-auto; implies
+        --run-segmentation)
     run_qc : bool
         Run quality control on raw data using MRIQC (default: False)
     sloppy : bool
@@ -260,6 +266,7 @@ to workflows in *OncoPrep*'s documentation]\
             deface=deface,
             run_segmentation=run_segmentation,
             run_radiomics=run_radiomics,
+            run_vasari=run_vasari,
             run_qc=run_qc,
             seg_model_path=seg_model_path,
             default_seg=default_seg,
@@ -303,6 +310,7 @@ def init_single_subject_wf(
     deface: bool = False,
     run_segmentation: bool = False,
     run_radiomics: bool = False,
+    run_vasari: bool = False,
     run_qc: bool = False,
     seg_model_path: Optional[Path] = None,
     default_seg: bool = False,
@@ -568,6 +576,7 @@ to workflows in *OncoPrep*'s documentation]\
                 ]),
                 (anat_preproc_wf, anat_seg_wf, [
                     ('outputnode.flair_preproc', 'inputnode.flair'),
+                    ('outputnode.anat2std_xfm', 'inputnode.anat2std_xfm'),
                 ]),
             ])
         else:
@@ -582,8 +591,17 @@ to workflows in *OncoPrep*'s documentation]\
                     ('outputnode.t2w_preproc', 'inputnode.t2w_preproc'),
                     ('outputnode.flair_preproc', 'inputnode.flair_preproc'),
                     ('outputnode.t1w_mask', 'inputnode.brain_mask'),
+                    ('outputnode.anat2std_xfm', 'inputnode.anat2std_xfm'),
                 ]),
             ])
+
+        # Resolve the template-space atlas reference image for resampling
+        # the tumor segmentation. Uses the first output space to determine
+        # which atlas set (MNI152 or SRI24) to use.
+        from ..interfaces.vasari import get_atlas_reference
+        _atlas_space = std_spaces[0] if std_spaces else 'MNI152NLin2009cAsym'
+        _std_ref = get_atlas_reference(_atlas_space)
+        anat_seg_wf.get_node('inputnode').inputs.std_reference = _std_ref
 
         workflow.connect([
             # Save tumor segmentation to BIDS derivatives
@@ -683,6 +701,42 @@ to workflows in *OncoPrep*'s documentation]\
             ]),
         ])
 
+    # VASARI feature extraction and radiology report (optional, requires segmentation)
+    if run_vasari and run_segmentation:
+        try:
+            from ..interfaces.vasari import _import_vasari_auto  # noqa: F401
+            _import_vasari_auto()  # validates vasari-auto is importable
+        except ImportError:
+            LOGGER.warning(
+                'vasari-auto is not installed — skipping VASARI feature extraction. '
+                'Install with: pip install vasari-auto  '
+                'or: pip install -e /path/to/vasari-auto'
+            )
+            run_vasari = False
+
+    if run_vasari and run_segmentation:
+        LOGGER.info(
+            'ANAT Stage 9: Initializing VASARI feature extraction workflow '
+            '(--run-vasari=True requires --run-segmentation=True)'
+        )
+        anat_vasari_wf = init_vasari_wf(
+            output_dir=str(output_dir),
+            atlas_space=_atlas_space,
+            name='anat_vasari_wf',
+        )
+
+        workflow.connect([
+            (bidssrc, anat_vasari_wf, [
+                (('t1w', fix_multi_T1w_source_name), 'inputnode.source_file'),
+            ]),
+            (anat_seg_wf, anat_vasari_wf, [
+                ('outputnode.tumor_seg_std', 'inputnode.tumor_seg_std'),
+            ]),
+            (bids_info, anat_vasari_wf, [
+                (('subject', _prefix, session_id), 'inputnode.subject_id'),
+            ]),
+        ])
+
     # MRIQC quality control workflow — TEMPORARILY DISABLED
     # The MRIQC integration is non-functional in this release.
     # It will be re-enabled in a future version.
@@ -707,6 +761,8 @@ to workflows in *OncoPrep*'s documentation]\
         n_sentinels += 1  # tumor dseg report
     if run_radiomics and run_segmentation:
         n_sentinels += 1  # radiomics report
+    if run_vasari and run_segmentation:
+        n_sentinels += 1  # vasari report
     # NOTE: MRIQC sentinel disabled (non-functional)
     # if run_qc:
     #     n_sentinels += 1  # mriqc report
@@ -752,6 +808,14 @@ to workflows in *OncoPrep*'s documentation]\
         workflow.connect([
             (anat_radiomics_wf, report_sentinel_merge, [
                 ('ds_radiomics_report.out_file', f'in{_sentinel_idx}'),
+            ]),
+        ])
+
+    if run_vasari and run_segmentation:
+        _sentinel_idx += 1
+        workflow.connect([
+            (anat_vasari_wf, report_sentinel_merge, [
+                ('ds_vasari_report.out_file', f'in{_sentinel_idx}'),
             ]),
         ])
 

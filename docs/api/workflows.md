@@ -40,6 +40,17 @@ Each workflow factory returns a `Workflow` instance with `inputnode` and
    init_anat_seg_wf
 ```
 
+### nnInteractive segmentation
+
+```{eval-rst}
+.. module:: oncoprep.workflows.nninteractive
+.. autosummary::
+   :toctree: _generated
+   :nosignatures:
+
+   init_nninteractive_seg_wf
+```
+
 ## Segmentation fusion
 
 ```{eval-rst}
@@ -62,6 +73,17 @@ Each workflow factory returns a `Workflow` instance with `inputnode` and
 
    init_anat_radiomics_wf
    init_multimodal_radiomics_wf
+```
+
+## VASARI feature extraction
+
+```{eval-rst}
+.. module:: oncoprep.workflows.vasari
+.. autosummary::
+   :toctree: _generated
+   :nosignatures:
+
+   init_vasari_wf
 ```
 
 ## Quality control (MRIQC) — *temporarily disabled*

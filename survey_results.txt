@@ -1,0 +1,231 @@
+==========================================
+DATASET: ASNR-MICCAI-BraTS2023-Local-Synthesis-Challenge-Training
+==========================================
+  Subjects: 1251
+  Top-level (first 15):
+    BraTS-GLI-00000-000
+    BraTS-GLI-00002-000
+    BraTS-GLI-00003-000
+    BraTS-GLI-00005-000
+    BraTS-GLI-00006-000
+    BraTS-GLI-00008-000
+    BraTS-GLI-00008-001
+    BraTS-GLI-00009-000
+    BraTS-GLI-00009-001
+    BraTS-GLI-00011-000
+    BraTS-GLI-00012-000
+    BraTS-GLI-00014-000
+    BraTS-GLI-00014-001
+    BraTS-GLI-00016-000
+    BraTS-GLI-00016-001
+  NIfTI files found: 6255
+    BraTS-GLI-00000-000-mask-unhealthy.nii.gz
+    BraTS-GLI-00000-000-mask-healthy.nii.gz
+    BraTS-GLI-00000-000-mask.nii.gz
+  DICOM files found: 0
+  Segmentation/mask/label files:
+    Count: 3753
+    BraTS-GLI-00000-000-mask-unhealthy.nii.gz
+    BraTS-GLI-00000-000-mask-healthy.nii.gz
+    BraTS-GLI-00000-000-mask.nii.gz
+  Sample subject (BraTS-GLI-00000-000) files:
+    BraTS-GLI-00000-000-mask-unhealthy.nii.gz
+    BraTS-GLI-00000-000-mask-healthy.nii.gz
+    BraTS-GLI-00000-000-mask.nii.gz
+    BraTS-GLI-00000-000-t1n-voided.nii.gz
+    BraTS-GLI-00000-000-t1n.nii.gz
+
+==========================================
+DATASET: ASNR-MICCAI-BraTS2023-Local-Synthesis-Challenge-Validation
+==========================================
+  Subjects: 219
+  Top-level (first 15):
+    BraTS-GLI-00001-000
+    BraTS-GLI-00001-001
+    BraTS-GLI-00013-000
+    BraTS-GLI-00013-001
+    BraTS-GLI-00015-000
+    BraTS-GLI-00015-001
+    BraTS-GLI-00027-000
+    BraTS-GLI-00037-000
+    BraTS-GLI-00047-000
+    BraTS-GLI-00079-000
+    BraTS-GLI-00080-000
+    BraTS-GLI-00080-001
+    BraTS-GLI-00082-000
+    BraTS-GLI-00091-000
+    BraTS-GLI-00114-000
+  NIfTI files found: 438
+    BraTS-GLI-00001-000-mask.nii.gz
+    BraTS-GLI-00001-000-t1n-voided.nii.gz
+    BraTS-GLI-00001-001-mask.nii.gz
+  DICOM files found: 0
+  Segmentation/mask/label files:
+    Count: 219
+    BraTS-GLI-00001-000-mask.nii.gz
+    BraTS-GLI-00001-001-mask.nii.gz
+    BraTS-GLI-00013-000-mask.nii.gz
+  Sample subject (BraTS-GLI-00001-000) files:
+    BraTS-GLI-00001-000-mask.nii.gz
+    BraTS-GLI-00001-000-t1n-voided.nii.gz
+
+==========================================
+DATASET: ASNR-MICCAI-BraTS2023-SSA-Challenge-TrainingData_V2
+==========================================
+  Subjects: 60
+  Top-level (first 15):
+    BraTS-SSA-00002-000
+    BraTS-SSA-00007-000
+    BraTS-SSA-00008-000
+    BraTS-SSA-00010-000
+    BraTS-SSA-00011-000
+    BraTS-SSA-00012-000
+    BraTS-SSA-00014-000
+    BraTS-SSA-00015-000
+    BraTS-SSA-00025-000
+    BraTS-SSA-00026-000
+    BraTS-SSA-00028-000
+    BraTS-SSA-00037-000
+    BraTS-SSA-00041-000
+    BraTS-SSA-00044-000
+    BraTS-SSA-00046-000
+  NIfTI files found: 300
+    BraTS-SSA-00002-000-seg.nii.gz
+    BraTS-SSA-00002-000-t1c.nii.gz
+    BraTS-SSA-00002-000-t1n.nii.gz
+  DICOM files found: 0
+  Segmentation/mask/label files:
+    Count: 60
+    BraTS-SSA-00002-000-seg.nii.gz
+    BraTS-SSA-00007-000-seg.nii.gz
+    BraTS-SSA-00008-000-seg.nii.gz
+  Sample subject (BraTS-SSA-00002-000) files:
+    BraTS-SSA-00002-000-seg.nii.gz
+    BraTS-SSA-00002-000-t1c.nii.gz
+    BraTS-SSA-00002-000-t1n.nii.gz
+    BraTS-SSA-00002-000-t2f.nii.gz
+    BraTS-SSA-00002-000-t2w.nii.gz
+
+==========================================
+DATASET: BraTS2024-SSA-Challenge-ValidationData
+==========================================
+  Subjects: 35
+  Top-level (first 15):
+    BraTS-SSA-00125-000
+    BraTS-SSA-00126-000
+    BraTS-SSA-00129-000
+    BraTS-SSA-00130-000
+    BraTS-SSA-00132-000
+    BraTS-SSA-00134-000
+    BraTS-SSA-00136-000
+    BraTS-SSA-00137-000
+    BraTS-SSA-00138-000
+    BraTS-SSA-00139-000
+    BraTS-SSA-00140-000
+    BraTS-SSA-00143-000
+    BraTS-SSA-00148-000
+    BraTS-SSA-00154-000
+    BraTS-SSA-00155-000
+  NIfTI files found: 140
+    BraTS-SSA-00125-000-t1c.nii.gz
+    BraTS-SSA-00125-000-t1n.nii.gz
+    BraTS-SSA-00125-000-t2f.nii.gz
+  DICOM files found: 0
+  Segmentation/mask/label files:
+    Count: 0
+  Sample subject (BraTS-SSA-00125-000) files:
+    BraTS-SSA-00125-000-t1c.nii.gz
+    BraTS-SSA-00125-000-t1n.nii.gz
+    BraTS-SSA-00125-000-t2f.nii.gz
+    BraTS-SSA-00125-000-t2w.nii.gz
+
+==========================================
+DATASET: BraTS2025-GLI-PRE-Challenge-TrainingData
+==========================================
+  Subjects: 1251
+  Top-level (first 15):
+    BraTS-GLI-00000-000
+    BraTS-GLI-00002-000
+    BraTS-GLI-00003-000
+    BraTS-GLI-00005-000
+    BraTS-GLI-00006-000
+    BraTS-GLI-00008-000
+    BraTS-GLI-00008-001
+    BraTS-GLI-00009-000
+    BraTS-GLI-00009-001
+    BraTS-GLI-00011-000
+    BraTS-GLI-00012-000
+    BraTS-GLI-00014-000
+    BraTS-GLI-00014-001
+    BraTS-GLI-00016-000
+    BraTS-GLI-00016-001
+  NIfTI files found: 6255
+    BraTS-GLI-00000-000-seg.nii.gz
+    BraTS-GLI-00000-000-t1c.nii.gz
+    BraTS-GLI-00000-000-t1n.nii.gz
+  DICOM files found: 0
+  Segmentation/mask/label files:
+    Count: 1251
+    BraTS-GLI-00000-000-seg.nii.gz
+    BraTS-GLI-00002-000-seg.nii.gz
+    BraTS-GLI-00003-000-seg.nii.gz
+  Sample subject (BraTS-GLI-00000-000) files:
+    BraTS-GLI-00000-000-seg.nii.gz
+    BraTS-GLI-00000-000-t1c.nii.gz
+    BraTS-GLI-00000-000-t1n.nii.gz
+    BraTS-GLI-00000-000-t2f.nii.gz
+    BraTS-GLI-00000-000-t2w.nii.gz
+
+==========================================
+DATASET: BraTS2025-GLI-PRE-Challenge-ValidationData
+==========================================
+  Subjects: 219
+  Top-level (first 15):
+    BraTS-GLI-00001-000
+    BraTS-GLI-00001-001
+    BraTS-GLI-00013-000
+    BraTS-GLI-00013-001
+    BraTS-GLI-00015-000
+    BraTS-GLI-00015-001
+    BraTS-GLI-00027-000
+    BraTS-GLI-00037-000
+    BraTS-GLI-00047-000
+    BraTS-GLI-00079-000
+    BraTS-GLI-00080-000
+    BraTS-GLI-00080-001
+    BraTS-GLI-00082-000
+    BraTS-GLI-00091-000
+    BraTS-GLI-00114-000
+  NIfTI files found: 876
+    BraTS-GLI-00001-000-t1c.nii.gz
+    BraTS-GLI-00001-000-t1n.nii.gz
+    BraTS-GLI-00001-000-t2f.nii.gz
+  DICOM files found: 0
+  Segmentation/mask/label files:
+    Count: 0
+  Sample subject (BraTS-GLI-00001-000) files:
+    BraTS-GLI-00001-000-t1c.nii.gz
+    BraTS-GLI-00001-000-t1n.nii.gz
+    BraTS-GLI-00001-000-t2f.nii.gz
+    BraTS-GLI-00001-000-t2w.nii.gz
+
+==========================================
+DATASET: MICCAI-LH-BraTS2025-MET-Challenge-Training
+==========================================
+  Subjects: 651
+  Top-level (first 15):
+    BraTS-MET-00001-000
+    BraTS-MET-00002-000
+    BraTS-MET-00003-000
+    BraTS-MET-00004-000
+    BraTS-MET-00005-000
+    BraTS-MET-00006-000
+    BraTS-MET-00007-000
+    BraTS-MET-00008-000
+    BraTS-MET-00009-000
+    BraTS-MET-00010-000
+    BraTS-MET-00011-000
+    BraTS-MET-00012-000
+    BraTS-MET-00013-000
+    BraTS-MET-00014-000
+    BraTS-MET-00015-000

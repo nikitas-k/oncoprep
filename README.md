@@ -27,48 +27,59 @@ OncoPrep is structured as a three-layer Nipype workflow system following [niprep
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │                          CLI / BIDS App                             │
-│                  oncoprep <bids_dir> <out_dir> ...                  │
+│           oncoprep <bids_dir> <out_dir> participant|group           │
 └──────────────────────────────┬──────────────────────────────────────┘
                                │
-┌──────────────────────────────▼─────────────────────────────────────┐
-│                     Orchestration Layer                            │
-│                   init_oncoprep_wf()  (base.py)                    │
-│       iterates subjects/sessions, manages memory & logging         │
-└───────┬──────────┬───────────┬──────────┬──────────────────────────┘
-        │          │           │          │
-        ▼          ▼           ▼          ▼
-┌───────────┐┌──────────┐┌──────────┐┌────────┐
-│ Anatomical││Segmentat.││  Fusion  ││Radiom. │
-│    WF     ││    WF    ││    WF    ││   WF   │
-│           ││          ││          ││        │
-│ •register ││ •Docker  ││ •MAV     ││•Hist   │
-│ •skull-   ││  models  ││ •SIMPLE  ││ norm   │
-│  strip    ││ •nnInter-││ •BraTS   ││•PyRad  │
-│ •deface   ││  active  ││  fusion  ││ feat.  │
-│ •template ││  ensemb. ││          ││•reports│
-└─────┬─────┘└────┬─────┘└────┬─────┘└───┬────┘
-      │           │           │          │
-      └───────────┴───────────┴──────────┘
-                               │
-┌──────────────────────────────▼──────────────────────────────────────┐
+          ┌────────────────────┴────────────────────┐
+          │                                        │
+          ▼                                        ▼
+┌─────────────────────────────────────┐  ┌─────────────────────────┐
+│      Participant-Level Stage        │  │   Group-Level Stage     │
+│    init_oncoprep_wf()  (base.py)    │  │  run_group_analysis()   │
+│  per-subject/session processing     │  │    (group.py)           │
+└──┬────────┬──────────┬──────────┬───┘  │                         │
+   │        │          │          │      │ •Collect radiomics      │
+   ▼        ▼          ▼          ▼      │  JSONs across cohort    │
+┌──────┐┌──────┐┌──────────┐┌────────┐   │ •ComBat harmonization   │
+│Anat. ││Segm. ││ Fusion   ││Radiom. │   │  (neuroCombat)          │
+│ WF   ││ WF   ││   WF     ││  WF    │   │ •Longitudinal auto-     │
+│      ││      ││          ││        │   │  detect & handling      │
+│•reg  ││•Dock.││•MAV      ││•Hist   │   │ •Age/sex covariates     │
+│•skull││ mod. ││•SIMPLE   ││ norm   │   │ •HTML report            │
+│ strip││•nnIn.││•BraTS    ││•SUSAN  │   └────────────┬────────────┘
+│•def. ││ act. ││ fusion   ││•PyRad  │                │
+│•temp.││ ens. ││          ││ feat.  │                │
+└──┬───┘└──┬───┘└────┬─────┘└───┬────┘                │
+   │       │         │          │                     │
+   └───────┴─────────┴──────────┘                     │
+                      │                               │
+┌─────────────────────▼───────────────────────────────▼───────────────┐
 │                        Outputs Layer                                │
 │              DerivativesDataSink → BIDS Derivatives                 │
-│       sub-XXX/anat/  •NIfTI  •JSON  •TSV  •HTML reports             │
+│   sub-XXX/anat/  •NIfTI  •JSON  •TSV  •HTML reports  •ComBat JSON   │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Data flow
 
 ```
-BIDS input ─► Anatomical WF ─► registered T1w/T1ce/T2w/FLAIR
-                 │
-                 ├──► Segmentation WF ─► N tumor predictions
-                 │         │
-                 │         └──► Fusion WF ─► consensus segmentation
-                 │                  │
-                 │                  └──► Radiomics WF ─► features JSON + report
-                 │
-                 └──► DerivativesDataSink ─► BIDS-compliant derivatives/
+Participant stage (per-subject):
+  BIDS input ─► Anatomical WF ─► registered T1w/T1ce/T2w/FLAIR
+                   │
+                   ├──► Segmentation WF ─► N tumor predictions
+                   │         │
+                   │         └──► Fusion WF ─► consensus segmentation
+                   │                  │
+                   │                  └──► Radiomics WF ─► features JSON + report
+                   │
+                   └──► DerivativesDataSink ─► BIDS-compliant derivatives/
+
+Group stage (cohort-wide, after all participants):
+  BIDS sidecars ─► generate batch CSV (scanner metadata + age/sex)
+       │
+       └──► Collect all radiomics JSONs ─► ComBat harmonization ─► harmonized JSONs
+                                              │
+                                              └──► group_combat_report.html
 ```
 
 ## Features
@@ -80,7 +91,8 @@ BIDS input ─► Anatomical WF ─► registered T1w/T1ce/T2w/FLAIR
 | **Container-based segmentation** | 14 BraTS-challenge Docker models in isolated containers; supports Docker and Singularity/Apptainer runtimes with GPU passthrough. |
 | **nnInteractive segmentation** | Zero-shot 3D promptable segmentation (Isensee et al., 2025) — no Docker needed, CPU or GPU, ~400 MB model weights from HuggingFace. |
 | **Ensemble fusion** | Three fusion algorithms (majority vote, SIMPLE, BraTS-specific) combine predictions from multiple models for robust consensus labels. |
-| **IBSI-compliant radiomics** | Intensity normalization (z-score, Nyul, WhiteStripe) before PyRadiomics feature extraction; reproducible across scanners and sites. |
+| **IBSI-compliant radiomics** | Intensity normalization (z-score, Nyul, WhiteStripe), SUSAN denoising, and PyRadiomics feature extraction; reproducible across scanners and sites. |
+| **ComBat harmonization** | Group-level ComBat batch-effect correction (neuroCombat) removes scanner/site effects from radiomics features while preserving biological covariates (age, sex). Auto-generates batch labels from BIDS sidecars. Supports longitudinal multi-session data with automatic detection. |
 | **Multi-modal support** | Joint processing of T1w, T1ce, T2w, and FLAIR with automatic handling of missing modalities. |
 | **fMRIPrep-style reports** | Per-subject HTML reports with registration overlays, tumor ROI contour plots, radiomics summary tables, and methods boilerplate. |
 | **HPC-ready** | Singularity/Apptainer support with pre-downloadable model caches; PBS/SLURM job script patterns included. |
@@ -132,6 +144,13 @@ Run with radiomics:
 ```bash
 oncoprep /path/to/bids /path/to/derivatives participant \
   --participant-label 001 --run-radiomics --default-seg
+```
+
+Run group-level ComBat harmonization (after participant-level radiomics):
+
+```bash
+oncoprep /path/to/bids /path/to/derivatives group \
+  --generate-combat-batch
 ```
 
 Generate reports from existing outputs:

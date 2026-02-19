@@ -21,7 +21,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict
 
 from nipype.interfaces.base import (
     BaseInterfaceInputSpec,
@@ -302,6 +302,552 @@ class HistogramNormalization(SimpleInterface):
         normed = data.copy()
         normed[mask] = data[mask] / mode_val
         return normed
+
+
+# ---------------------------------------------------------------------------
+# SUSAN Denoising Interface
+# ---------------------------------------------------------------------------
+
+class _SUSANDenoisingInputSpec(BaseInterfaceInputSpec):
+    in_file = File(exists=True, mandatory=True,
+                   desc='Input image to denoise')
+    in_mask = File(exists=True, mandatory=True,
+                   desc='Brain mask for estimating brightness threshold')
+    fwhm = traits.Float(
+        2.0, usedefault=True,
+        desc='Full-width half-maximum of the Gaussian smoothing kernel in mm '
+             '(default: 2.0, as recommended for radiomics preprocessing)',
+    )
+    brightness_threshold_pct = traits.Float(
+        75.0, usedefault=True,
+        desc='Percentile of brain-masked intensities to use as the SUSAN '
+             'brightness threshold.  The default (75th percentile) produces '
+             'edge-preserving smoothing that reduces noise while retaining '
+             'tumor boundaries, following the approach described in '
+             'Pati et al., AJNR 2024; 45: 1291–1298.',
+    )
+
+
+class _SUSANDenoisingOutputSpec(TraitedSpec):
+    out_file = File(exists=True,
+                    desc='Denoised image')
+
+
+class SUSANDenoising(SimpleInterface):
+    """SUSAN edge-preserving denoising for radiomics reproducibility.
+
+    Applies FSL SUSAN (Smallest Univalue Segment Assimilating Nucleus)
+    noise reduction to pre-normalised brain images.  SUSAN smooths
+    homogeneous regions while preserving edges, making it ideal for
+    pre-processing prior to texture-feature extraction.
+
+    The brightness threshold is derived automatically from the brain-masked
+    intensity distribution (default: 75th percentile), following the
+    preprocessing pipeline described in:
+
+        S. Pati et al., "Reproducibility of the Tumor-Habitat MRI
+        Biomarker DESMOND," *AJNR Am J Neuroradiol*, vol. 45, no. 9,
+        pp. 1291–1298, 2024.
+
+    This interface is a pure-Python re-implementation that does **not**
+    require FSL to be installed.  It uses a Gaussian-weighted local-mean
+    filter that skips voxels whose intensity differs from the centre by
+    more than the brightness threshold.
+    """
+
+    input_spec = _SUSANDenoisingInputSpec
+    output_spec = _SUSANDenoisingOutputSpec
+
+    def _run_interface(self, runtime):
+        import nibabel as nib
+        import numpy as np
+
+        img = nib.load(self.inputs.in_file)
+        data = np.array(img.get_fdata(), dtype=np.float64)
+
+        mask_img = nib.load(self.inputs.in_mask)
+        mask_data = np.asarray(mask_img.dataobj)
+
+        if mask_data.shape != data.shape:
+            raise RuntimeError(
+                f'Image shape {data.shape} does not match mask shape '
+                f'{mask_data.shape}. Ensure inputs are in the same space.'
+            )
+
+        # Binarise multi-label masks
+        mask = mask_data > 0 if mask_data.max() > 1 else mask_data.astype(bool)
+
+        # Derive brightness threshold from brain-masked intensities
+        brain_vals = data[mask]
+        if brain_vals.size == 0:
+            # Nothing to denoise
+            out_path = os.path.join(runtime.cwd, 'susan_denoised.nii.gz')
+            nib.save(img, out_path)
+            self._results['out_file'] = out_path
+            return runtime
+
+        bt = float(np.percentile(
+            brain_vals, self.inputs.brightness_threshold_pct,
+        ))
+
+        fwhm = self.inputs.fwhm
+        denoised = self._susan_smooth(data, mask, bt, fwhm, img.header.get_zooms()[:3])
+
+        out_img = nib.Nifti1Image(
+            denoised.astype(np.float32), img.affine, img.header,
+        )
+
+        # Derive unique output name from input
+        in_name = Path(self.inputs.in_file).name
+        for ext in ('.nii.gz', '.nii'):
+            if in_name.endswith(ext):
+                in_stem = in_name[:-len(ext)]
+                break
+        else:
+            in_stem = Path(in_name).stem
+        out_path = os.path.join(runtime.cwd, f'{in_stem}_susan.nii.gz')
+        nib.save(out_img, out_path)
+        self._results['out_file'] = out_path
+        return runtime
+
+    @staticmethod
+    def _susan_smooth(data, mask, bt, fwhm, voxel_sizes):
+        """Pure-Python SUSAN-style edge-preserving smoothing.
+
+        Parameters
+        ----------
+        data : ndarray
+            3-D image volume.
+        mask : ndarray (bool)
+            Brain mask.
+        bt : float
+            Brightness threshold — voxels with intensity difference
+            greater than this from the centre voxel are excluded from
+            the local weighted average.
+        fwhm : float
+            Gaussian kernel FWHM in mm.
+        voxel_sizes : tuple of float
+            Voxel dimensions in mm (used to convert *fwhm* to voxels).
+
+        Returns
+        -------
+        ndarray
+            Smoothed volume (unmasked voxels are left unchanged).
+        """
+        import numpy as np
+
+        sigma_mm = fwhm / (2.0 * np.sqrt(2.0 * np.log(2.0)))
+        voxel_sizes = np.asarray(voxel_sizes, dtype=np.float64)
+        sigma_vox = sigma_mm / voxel_sizes  # per-axis sigma in voxels
+
+        # Kernel half-width (3-sigma, at least 1 voxel)
+        hw = np.maximum(np.ceil(3.0 * sigma_vox).astype(int), 1)
+
+        result = data.copy()
+
+        # Pre-compute Gaussian kernel weights (separable)
+        kernels = []
+        for ax in range(3):
+            r = np.arange(-hw[ax], hw[ax] + 1, dtype=np.float64)
+            k = np.exp(-0.5 * (r / max(sigma_vox[ax], 1e-8)) ** 2)
+            kernels.append(k)
+
+        # Build 3-D weight kernel
+        kx, ky, kz = np.meshgrid(
+            kernels[0], kernels[1], kernels[2], indexing='ij',
+        )
+        gauss_kernel = kx * ky * kz
+
+        # Pad data for boundary handling
+        pad_widths = [(h, h) for h in hw]
+        padded = np.pad(data, pad_widths, mode='reflect')
+        pad_mask = np.pad(mask, pad_widths, mode='constant', constant_values=False)
+
+        # Iterate only over masked voxels
+        coords = np.argwhere(mask)
+        for idx in coords:
+            i, j, k = idx
+            # Extract local patch from padded volume
+            pi, pj, pk = i + hw[0], j + hw[1], k + hw[2]
+            patch = padded[
+                pi - hw[0]:pi + hw[0] + 1,
+                pj - hw[1]:pj + hw[1] + 1,
+                pk - hw[2]:pk + hw[2] + 1,
+            ]
+            patch_mask = pad_mask[
+                pi - hw[0]:pi + hw[0] + 1,
+                pj - hw[1]:pj + hw[1] + 1,
+                pk - hw[2]:pk + hw[2] + 1,
+            ]
+
+            centre_val = data[i, j, k]
+            # Brightness gate: keep only voxels within bt of centre
+            intensity_gate = np.abs(patch - centre_val) <= bt
+            combined_gate = intensity_gate & patch_mask & (gauss_kernel > 0)
+
+            if combined_gate.any():
+                weights = gauss_kernel[combined_gate]
+                values = patch[combined_gate]
+                result[i, j, k] = np.dot(weights, values) / weights.sum()
+
+        return result
+
+
+# ---------------------------------------------------------------------------
+# ComBat Harmonization Interface
+# ---------------------------------------------------------------------------
+
+class _ComBatHarmonizationInputSpec(BaseInterfaceInputSpec):
+    in_features = File(
+        exists=True, mandatory=True,
+        desc='JSON file with extracted radiomics features '
+             '(single-subject, output of PyRadiomicsFeatureExtraction)',
+    )
+    batch_file = File(
+        exists=True,
+        desc='CSV file mapping subjects to scanner/site batches. '
+             'Must have columns: subject_id, batch.  '
+             'Optional covariate columns (e.g. age, sex) are also '
+             'passed to ComBat as biological covariates.',
+    )
+    subject_id = traits.Str(
+        mandatory=True,
+        desc='Current subject identifier (must match a row in batch_file)',
+    )
+    reference_features_dir = traits.Directory(
+        desc='Directory containing per-subject radiomics JSON files '
+             '(same schema as in_features) for the harmonization '
+             'reference cohort.  All JSON files matching '
+             '"*radiomics*.json" will be loaded.',
+    )
+    parametric = traits.Bool(
+        True, usedefault=True,
+        desc='Use parametric priors for ComBat (default: True). '
+             'Set to False for non-parametric empirical Bayes.',
+    )
+
+
+class _ComBatHarmonizationOutputSpec(TraitedSpec):
+    out_features = File(
+        exists=True,
+        desc='JSON file with ComBat-harmonized radiomics features',
+    )
+    out_report = File(
+        exists=True,
+        desc='HTML fragment summarising harmonization statistics',
+    )
+
+
+class ComBatHarmonization(SimpleInterface):
+    """ComBat harmonization of radiomics features across scanner sites.
+
+    Applies the ComBat batch-effect correction algorithm (Johnson et al.,
+    Biostatistics 2007) to radiomics features to reduce inter-scanner
+    variability while preserving biological signal.
+
+    This follows the methodology described in:
+
+        S. Pati et al., "Reproducibility of the Tumor-Habitat MRI
+        Biomarker DESMOND," *AJNR Am J Neuroradiol*, vol. 45, no. 9,
+        pp. 1291–1298, 2024.
+
+    The implementation uses the *neuroCombat* library
+    (Fortin et al., NeuroImage 2018).
+
+    To harmonize a single subject's features, a reference cohort must
+    be provided via ``reference_features_dir`` (directory of per-subject
+    JSON files) and a ``batch_file`` (CSV mapping each subject to its
+    scanner/site batch).
+    """
+
+    input_spec = _ComBatHarmonizationInputSpec
+    output_spec = _ComBatHarmonizationOutputSpec
+
+    def _run_interface(self, runtime):
+        import numpy as np
+        import pandas as pd
+
+        # --- Load current subject features ---
+        with open(self.inputs.in_features) as f:
+            subj_features = json.load(f)
+
+        # If no batch file provided, skip harmonization
+        if not isdefined(self.inputs.batch_file) or not self.inputs.batch_file:
+            out_json = os.path.abspath('radiomics_combat.json')
+            with open(out_json, 'w') as f:
+                json.dump(subj_features, f, indent=2, default=str)
+            self._results['out_features'] = out_json
+
+            out_html = os.path.abspath('combat_report.html')
+            with open(out_html, 'w') as f:
+                f.write(
+                    '<div class="combat-report">'
+                    '<p>ComBat harmonization skipped — '
+                    'no batch file provided.</p></div>'
+                )
+            self._results['out_report'] = out_html
+            return runtime
+
+        try:
+            from neuroCombat import neuroCombat
+        except ImportError:
+            raise ImportError(
+                'neuroCombat is required for ComBat harmonization. '
+                'Install with: pip install neuroCombat'
+            )
+
+        # --- Load batch info ---
+        batch_df = pd.read_csv(self.inputs.batch_file)
+        if 'subject_id' not in batch_df.columns or 'batch' not in batch_df.columns:
+            raise ValueError(
+                'batch_file must contain columns: subject_id, batch'
+            )
+
+        # --- Load reference cohort features ---
+        ref_dir = self.inputs.reference_features_dir
+        if not isdefined(ref_dir) or not ref_dir:
+            raise ValueError(
+                'reference_features_dir is required for ComBat harmonization'
+            )
+
+        ref_dir_path = Path(ref_dir)
+        ref_files = sorted(ref_dir_path.glob('*radiomics*.json'))
+        if len(ref_files) < 2:
+            raise ValueError(
+                f'Need at least 2 reference feature files in '
+                f'{ref_dir}, found {len(ref_files)}'
+            )
+
+        # --- Build feature matrix ---
+        # Flatten features from all subjects into a matrix
+        all_subjects = {}  # subject_id → {feature_name: value}
+        subject_id = self.inputs.subject_id
+
+        # Add current subject
+        flat_current = _flatten_features(subj_features)
+        all_subjects[subject_id] = flat_current
+
+        # Add reference subjects
+        for ref_file in ref_files:
+            ref_subj_id = ref_file.stem.split('_')[0]  # e.g. sub-001
+            if ref_subj_id == subject_id:
+                continue
+            with open(ref_file) as f:
+                ref_data = json.load(f)
+            all_subjects[ref_subj_id] = _flatten_features(ref_data)
+
+        # Build aligned feature matrix (subjects × features)
+        subj_ids = list(all_subjects.keys())
+        feature_names = sorted(flat_current.keys())
+
+        # Only keep numeric features present in all subjects
+        valid_features = []
+        for fn in feature_names:
+            try:
+                vals = [float(all_subjects[s].get(fn, np.nan)) for s in subj_ids]
+                if not any(np.isnan(v) for v in vals):
+                    valid_features.append(fn)
+            except (TypeError, ValueError):
+                continue
+
+        if not valid_features:
+            # No features to harmonize
+            out_json = os.path.abspath('radiomics_combat.json')
+            with open(out_json, 'w') as f:
+                json.dump(subj_features, f, indent=2, default=str)
+            self._results['out_features'] = out_json
+
+            out_html = os.path.abspath('combat_report.html')
+            with open(out_html, 'w') as f:
+                f.write(
+                    '<div class="combat-report">'
+                    '<p>ComBat harmonization skipped — '
+                    'no valid numeric features found.</p></div>'
+                )
+            self._results['out_report'] = out_html
+            return runtime
+
+        # features × subjects matrix (neuroCombat expects this orientation)
+        data_matrix = np.array([
+            [float(all_subjects[s][fn]) for s in subj_ids]
+            for fn in valid_features
+        ])
+
+        # Build batch vector aligned with subjects
+        batch_dict = dict(zip(
+            batch_df['subject_id'].astype(str),
+            batch_df['batch'].astype(str),
+        ))
+
+        batch_vector = []
+        keep_idx = []
+        for i, sid in enumerate(subj_ids):
+            # Try both with and without 'sub-' prefix
+            b = batch_dict.get(sid) or batch_dict.get(sid.replace('sub-', ''))
+            if b is not None:
+                batch_vector.append(b)
+                keep_idx.append(i)
+
+        if len(set(batch_vector)) < 2:
+            # Need at least 2 batches for ComBat
+            out_json = os.path.abspath('radiomics_combat.json')
+            with open(out_json, 'w') as f:
+                json.dump(subj_features, f, indent=2, default=str)
+            self._results['out_features'] = out_json
+
+            out_html = os.path.abspath('combat_report.html')
+            with open(out_html, 'w') as f:
+                f.write(
+                    '<div class="combat-report">'
+                    '<p>ComBat harmonization skipped — '
+                    'fewer than 2 scanner batches found.</p></div>'
+                )
+            self._results['out_report'] = out_html
+            return runtime
+
+        # Subset to subjects with batch info
+        data_matrix = data_matrix[:, keep_idx]
+        subj_ids_filtered = [subj_ids[i] for i in keep_idx]
+
+        # Build covars DataFrame
+        covars = pd.DataFrame({
+            'batch': batch_vector,
+        }, index=subj_ids_filtered)
+
+        # Add optional biological covariates
+        bio_cols = [c for c in batch_df.columns
+                    if c not in ('subject_id', 'batch')]
+        for col in bio_cols:
+            col_dict = dict(zip(
+                batch_df['subject_id'].astype(str),
+                batch_df[col],
+            ))
+            covars[col] = [
+                col_dict.get(sid, col_dict.get(sid.replace('sub-', ''), np.nan))
+                for sid in subj_ids_filtered
+            ]
+
+        # Run ComBat
+        combat_result = neuroCombat(
+            dat=data_matrix,
+            covars=covars,
+            batch_col='batch',
+            categorical_cols=[c for c in bio_cols
+                              if batch_df[c].dtype == object],
+            continuous_cols=[c for c in bio_cols
+                            if batch_df[c].dtype != object],
+        )
+        harmonized = combat_result['data']  # features × subjects
+
+        # Find column index for current subject
+        try:
+            subj_col = subj_ids_filtered.index(subject_id)
+        except ValueError:
+            # Subject not in batch file — return unharmonized
+            out_json = os.path.abspath('radiomics_combat.json')
+            with open(out_json, 'w') as f:
+                json.dump(subj_features, f, indent=2, default=str)
+            self._results['out_features'] = out_json
+
+            out_html = os.path.abspath('combat_report.html')
+            with open(out_html, 'w') as f:
+                f.write(
+                    '<div class="combat-report">'
+                    '<p>ComBat harmonization: current subject '
+                    'not found in batch file.</p></div>'
+                )
+            self._results['out_report'] = out_html
+            return runtime
+
+        # Replace features in the original structure
+        harmonized_flat = {
+            fn: float(harmonized[i, subj_col])
+            for i, fn in enumerate(valid_features)
+        }
+        harmonized_features = _unflatten_features(
+            subj_features, harmonized_flat,
+        )
+
+        # --- Write outputs ---
+        out_json = os.path.abspath('radiomics_combat.json')
+        with open(out_json, 'w') as f:
+            json.dump(harmonized_features, f, indent=2, default=str)
+        self._results['out_features'] = out_json
+
+        # Report
+        n_features = len(valid_features)
+        n_subjects = data_matrix.shape[1]
+        n_batches = len(set(batch_vector))
+
+        out_html = os.path.abspath('combat_report.html')
+        with open(out_html, 'w') as f:
+            f.write(
+                '<div class="combat-report">'
+                '<h4>ComBat Harmonization Summary</h4>'
+                '<table class="combat-summary">'
+                '<tbody>'
+                f'<tr><td>Features harmonized</td><td>{n_features}</td></tr>'
+                f'<tr><td>Reference cohort size</td><td>{n_subjects}</td></tr>'
+                f'<tr><td>Scanner batches</td><td>{n_batches}</td></tr>'
+                f'<tr><td>Parametric</td><td>{self.inputs.parametric}</td></tr>'
+                '</tbody></table></div>'
+            )
+        self._results['out_report'] = out_html
+        return runtime
+
+
+def _flatten_features(features_dict):
+    """Flatten nested radiomics JSON to ``{region__category__feature: value}``.
+
+    Parameters
+    ----------
+    features_dict : dict
+        Nested dict as produced by ``PyRadiomicsFeatureExtraction``:
+        ``{region: {features: {category: {feature: value}}}}``.
+
+    Returns
+    -------
+    dict
+        Flat ``{key: value}`` mapping.
+    """
+    flat = {}
+    for region, rdata in features_dict.items():
+        feats = rdata.get('features', {})
+        for category, cat_feats in feats.items():
+            for feat_name, feat_val in cat_feats.items():
+                key = f'{region}__{category}__{feat_name}'
+                try:
+                    flat[key] = float(feat_val)
+                except (TypeError, ValueError):
+                    pass
+    return flat
+
+
+def _unflatten_features(original, harmonized_flat):
+    """Replace values in nested features dict with harmonized values.
+
+    Parameters
+    ----------
+    original : dict
+        Original nested features dict.
+    harmonized_flat : dict
+        Flat ``{region__category__feature: value}`` from ComBat.
+
+    Returns
+    -------
+    dict
+        Updated nested dict with harmonized values.
+    """
+    import copy
+    result = copy.deepcopy(original)
+    for region, rdata in result.items():
+        feats = rdata.get('features', {})
+        for category, cat_feats in feats.items():
+            for feat_name in list(cat_feats.keys()):
+                key = f'{region}__{category}__{feat_name}'
+                if key in harmonized_flat:
+                    cat_feats[feat_name] = harmonized_flat[key]
+    return result
 
 
 # ---------------------------------------------------------------------------

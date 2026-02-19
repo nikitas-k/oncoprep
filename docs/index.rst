@@ -21,6 +21,8 @@ Key features
 - **Multi-model ensemble segmentation** — 14 BraTS-challenge Docker models
 - **Segmentation fusion** — majority voting, SIMPLE, and BraTS-specific fusion
 - **Radiomics** — PyRadiomics-based quantitative feature extraction
+- **VASARI** — automated VASARI feature extraction and radiology report
+  generation (vasari-auto)
 - **Surface processing** *(planned)* — FreeSurfer + GIFTI/CIFTI-2 derivatives
 - **HTML reports** — fMRIPrep-style quality-assurance reports
 
@@ -34,6 +36,8 @@ Key features
    tutorial
    usage/cli
    usage/segmentation
+   usage/group_combat
+   usage/vasari
    usage/docker
    usage/hpc
 

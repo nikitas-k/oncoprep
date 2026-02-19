@@ -1,0 +1,16 @@
+BATCH: 1
+==========================================
+DATASET: BraTS2025-GLI-PRE-Challenge-TrainingData
+==========================================
+  Subjects: 1251
+  Top-level (first 10):
+    BraTS-GLI-00000-000
+    BraTS-GLI-00002-000
+    BraTS-GLI-00003-000
+    BraTS-GLI-00005-000
+    BraTS-GLI-00006-000
+    BraTS-GLI-00008-000
+    BraTS-GLI-00008-001
+    BraTS-GLI-00009-000
+    BraTS-GLI-00009-001
+    BraTS-GLI-00011-000

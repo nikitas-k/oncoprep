@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "oncoprep"
-version = "0.2.1"
+version = "0.2.2"
 description = "A toolbox for analysing neuro-oncology MRI"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -43,6 +43,10 @@ hd-bet = [
 ]
 radiomics = [
     "pyradiomics==3.0.1",
+    "neuroCombat>=0.2.12",
+]
+vasari = [
+    "vasari-auto @ git+https://github.com/nikitas-k/vasari-auto.git",
 ]
 mriqc = [
     "mriqc>=24.0",
@@ -92,6 +96,6 @@ packages = [
 
 [tool.setuptools.package-data]
 "oncoprep.config" = ["*.json"]
-"oncoprep.data" = ["*.txt"]
+"oncoprep.data" = ["*.txt", "atlas_masks/mni152/*.nii.gz", "atlas_masks/sri24/*.nii.gz"]
 "oncoprep.reports" = ["*.j2", "*.css", "*.html"]
 

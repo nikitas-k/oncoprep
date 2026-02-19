@@ -1,15 +1,25 @@
 #!/usr/bin/env python
-"""Convert BraTS-GLI-2024 / BraTS-MEN-2024 / BraTS-MET-2024 to BIDS layout.
+"""Convert BraTS-style challenge datasets to BIDS layout.
 
-All three BraTS challenge datasets share the same naming convention:
+Supports all BraTS challenge datasets that share the naming convention:
     {SubjectID}-t1c.nii.gz  →  sub-{ID}/anat/sub-{ID}_ce-T1w.nii.gz
     {SubjectID}-t1n.nii.gz  →  sub-{ID}/anat/sub-{ID}_T1w.nii.gz
     {SubjectID}-t2f.nii.gz  →  sub-{ID}/anat/sub-{ID}_FLAIR.nii.gz
     {SubjectID}-t2w.nii.gz  →  sub-{ID}/anat/sub-{ID}_T2w.nii.gz
     {SubjectID}-seg.nii.gz  →  derivatives/ground-truth/sub-{ID}/anat/sub-{ID}_dseg.nii.gz
 
-Subject IDs follow the pattern BraTS-{TYPE}-{5digit}-{3digit}, where the
-3-digit suffix encodes timepoints (GLI) or is always 000 (MEN, MET).
+Supported datasets:
+    - BraTS-GLI-2024 (adult glioma)
+    - BraTS-MEN-2024 (meningioma)
+    - BraTS-MET-2024 (brain metastases)
+    - BraTS-SSA-2023 (sub-Saharan Africa glioma)
+    - BraTS2025-GLI-PRE (pre-treatment glioma 2025)
+    - BraTS2025-MET (metastases 2025, incl. UCSD split)
+    - BraTS-GoAT-2024 (generalizable across tumours)
+
+Subject IDs follow either:
+    BraTS-{TYPE}-{5digit}-{3digit}  (GLI, MEN, MET, SSA — 3-digit session suffix)
+    BraTS-{TYPE}-{5digit}           (GoAT — no session suffix)
 
 Usage:
     python scripts/convert_brats_to_bids.py \\
@@ -18,14 +28,31 @@ Usage:
         --dataset-name brats_gli
 
     python scripts/convert_brats_to_bids.py \\
-        --source /Volumes/MHFCBCR/imaging_datasets/BraTS-MEN-2024 \\
-        --output /data/bids/brats_men \\
-        --dataset-name brats_men
+        --source /Volumes/MHFCBCR/imaging_datasets/ASNR-MICCAI-BraTS2023-SSA-Challenge-TrainingData_V2 \\
+        --output /data/bids/brats_ssa \\
+        --dataset-name brats_ssa
 
     python scripts/convert_brats_to_bids.py \\
-        --source /Volumes/MHFCBCR/imaging_datasets/BraTS-MET-2024 \\
-        --output /data/bids/brats_met \\
-        --dataset-name brats_met
+        --source /Volumes/MHFCBCR/imaging_datasets/MICCAI2024-BraTS-GoAT-TrainingData-With-GroundTruth \\
+        --output /data/bids/brats_goat \\
+        --dataset-name brats_goat
+
+    python scripts/convert_brats_to_bids.py \\
+        --source /Volumes/MHFCBCR/imaging_datasets/BraTS2025-GLI-PRE-Challenge-TrainingData \\
+        --output /data/bids/brats_gli_pre \\
+        --dataset-name brats_gli_pre
+
+    python scripts/convert_brats_to_bids.py \\
+        --source /Volumes/MHFCBCR/imaging_datasets/MICCAI-LH-BraTS2025-MET-Challenge-Training \\
+        --output /data/bids/brats_met_2025 \\
+        --dataset-name brats_met_2025
+
+    # Optional: apply corrected labels to BraTS2025-MET
+    python scripts/convert_brats_to_bids.py \\
+        --source /Volumes/MHFCBCR/imaging_datasets/MICCAI-LH-BraTS2025-MET-Challenge-Training \\
+        --output /data/bids/brats_met_2025 \\
+        --dataset-name brats_met_2025 \\
+        --corrected-labels /Volumes/MHFCBCR/imaging_datasets/MICCAI-LH-BraTS2025-MET-Challenge-corrected-labels
 """
 
 from __future__ import annotations
@@ -46,9 +73,11 @@ MODALITY_MAP = {
     "t2w": "T2w",          # T2 weighted
 }
 
-# BraTS subject ID regex
+# BraTS subject ID regex — handles two patterns:
+#   BraTS-{TYPE}-{5digit}-{3digit}  (GLI, MEN, MET, SSA)
+#   BraTS-{TYPE}-{5digit}           (GoAT)
 BRATS_ID_RE = re.compile(
-    r"^(BraTS-(?:GLI|MEN|MET)-\d{5})-(\d{3})$"
+    r"^(BraTS-(?:GLI|MEN|MET|SSA|GoAT)-\d{5})(?:-(\d{3}))?$"
 )
 
 
@@ -60,8 +89,8 @@ def parse_brats_id(folder_name: str) -> Optional[Tuple[str, str, str]]:
     m = BRATS_ID_RE.match(folder_name)
     if not m:
         return None
-    base_id = m.group(1)   # e.g. BraTS-GLI-00005
-    timepoint = m.group(2)  # e.g. 100
+    base_id = m.group(1)   # e.g. BraTS-GLI-00005 or BraTS-GoAT-00003
+    timepoint = m.group(2) or "000"  # Default to 000 for GoAT (no session)
 
     # Sanitise for BIDS (no hyphens in labels)
     sub_label = base_id.replace("-", "")        # BraTSGLI00005
@@ -79,11 +108,14 @@ def discover_subject_folders(source_dir: Path) -> List[Path]:
         # Skip validation data (no segmentations)
         if "validation" in subdir.name.lower():
             continue
-        # Check if it's a split directory (training_data1, etc.)
+        # Check if it's a split directory (training_data1, UCSD - Training, etc.)
         # or directly a subject folder
         children = list(subdir.iterdir())
         if any(c.name.endswith("-seg.nii.gz") for c in children if c.is_file()):
             # This is itself a subject folder
+            folders.append(subdir)
+        elif subdir.name.startswith("BraTS-"):
+            # Direct subject folder without segmentation (unusual, but include)
             folders.append(subdir)
         else:
             # It's a split directory containing subject folders
@@ -203,7 +235,7 @@ def write_participants_tsv(output_dir: Path, rows: List[dict]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Convert BraTS-GLI/MEN/MET datasets to BIDS"
+        description="Convert BraTS-style challenge datasets to BIDS"
     )
     parser.add_argument("--source", type=Path, required=True,
                         help="Root of the BraTS dataset (e.g. BraTS-GLI-2024/)")
@@ -213,6 +245,9 @@ def main() -> None:
                         help="Name for dataset_description.json")
     parser.add_argument("--copy", action="store_true", default=False,
                         help="Copy files instead of symlinking")
+    parser.add_argument("--corrected-labels", type=Path, default=None,
+                        help="Directory with corrected seg files to overlay "
+                             "(e.g. BraTS2025-MET corrected-labels)")
     args = parser.parse_args()
 
     source = args.source.resolve()
@@ -241,7 +276,30 @@ def main() -> None:
     write_deriv_metadata(deriv_dir, args.dataset_name)
     write_participants_tsv(output, rows)
 
+    # Apply corrected labels if provided
+    n_corrected = 0
+    if args.corrected_labels and args.corrected_labels.exists():
+        print(f"\nApplying corrected labels from {args.corrected_labels}")
+        copy_fn = _symlink if not args.copy else shutil.copy2
+        for seg_file in sorted(args.corrected_labels.glob("*-seg.nii.gz")):
+            # Parse subject ID from filename: BraTS-MET-01094-003-seg.nii.gz
+            stem = seg_file.name.replace("-seg.nii.gz", "")
+            parsed = parse_brats_id(stem)
+            if parsed is None:
+                print(f"  SKIP corrected label: {seg_file.name}")
+                continue
+            sub_label, ses_label, _ = parsed
+            sub_str = f"sub-{sub_label}"
+            ses_str = f"ses-{ses_label}"
+            dst = deriv_dir / sub_str / ses_str / "anat" / f"{sub_str}_{ses_str}_dseg.nii.gz"
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            copy_fn(seg_file, dst)
+            n_corrected += 1
+            print(f"  Replaced: {seg_file.name} → {dst.relative_to(deriv_dir)}")
+
     print(f"\nDone. Converted {len(rows)}/{len(folders)} subjects to BIDS.")
+    if n_corrected:
+        print(f"  Corrected labels applied: {n_corrected}")
     print(f"  Raw data:     {output}")
     print(f"  Ground truth: {deriv_dir}")
 

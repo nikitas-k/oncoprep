@@ -749,6 +749,8 @@ def init_anat_seg_wf(
                 't2w_preproc',    # Preprocessed T2w
                 'flair_preproc',  # Preprocessed FLAIR
                 'brain_mask',     # Brain mask (optional reference)
+                'anat2std_xfm',   # Native → template transform (for resampling seg)
+                'std_reference',  # Template-space reference image (ApplyTransforms ref)
             ]
         ),
         name='inputnode',
@@ -758,12 +760,14 @@ def init_anat_seg_wf(
     # tumor_seg: raw model output
     # tumor_seg_old: old BraTS labels (1=NCR, 2=ED, 3=ET, 4=RC)
     # tumor_seg_new: new derived labels (1=ET, 2=TC, 3=WT, 4=NETC, 5=SNFH, 6=RC)
+    # tumor_seg_std: old BraTS labels resampled to template space
     outputnode = pe.Node(
         niu.IdentityInterface(
             fields=[
                 'tumor_seg',      # Raw tumor segmentation map
                 'tumor_seg_old',  # Old BraTS labels
                 'tumor_seg_new',  # New derived labels
+                'tumor_seg_std',  # Old BraTS labels in template space
             ]
         ),
         name='outputnode',
@@ -817,6 +821,7 @@ def init_anat_seg_wf(
                 ('seg_file', 'tumor_seg'),
                 ('seg_file', 'tumor_seg_old'),
                 ('seg_file', 'tumor_seg_new'),
+                ('seg_file', 'tumor_seg_std'),
             ]),
         ])
 
@@ -1076,7 +1081,8 @@ def init_anat_seg_wf(
         workflow.connect([
             (extract_result, convert_old, [('seg_file', 'seg_file')]),
             (extract_result, convert_new, [('seg_file', 'seg_file')]),
-            (convert_old, outputnode, [('old_labels_file', 'tumor_seg_old')]),
+            (convert_old, seg_old_buffer, [('old_labels_file', 'tumor_seg_old')]),
+            (seg_old_buffer, outputnode, [('tumor_seg_old', 'tumor_seg_old')]),
             (convert_new, outputnode, [('new_labels_file', 'tumor_seg_new')]),
         ])
 
@@ -1197,7 +1203,8 @@ def init_anat_seg_wf(
         workflow.connect([
             (extract_result, convert_old, [('seg_file', 'seg_file')]),
             (extract_result, convert_new, [('seg_file', 'seg_file')]),
-            (convert_old, outputnode, [('old_labels_file', 'tumor_seg_old')]),
+            (convert_old, seg_old_buffer, [('old_labels_file', 'tumor_seg_old')]),
+            (seg_old_buffer, outputnode, [('tumor_seg_old', 'tumor_seg_old')]),
             (convert_new, outputnode, [('new_labels_file', 'tumor_seg_new')]),
         ])
 
@@ -1326,8 +1333,14 @@ def init_anat_seg_wf(
             # Connect fusion outputs to main workflow outputs
             (fusion_wf, outputnode, [
                 ('outputnode.fused_seg', 'tumor_seg'),
-                ('outputnode.fused_seg_old', 'tumor_seg_old'),
                 ('outputnode.fused_seg_new', 'tumor_seg_new'),
+            ]),
+            # Route fused_seg_old through buffer for template resampling
+            (fusion_wf, seg_old_buffer, [
+                ('outputnode.fused_seg_old', 'tumor_seg_old'),
+            ]),
+            (seg_old_buffer, outputnode, [
+                ('tumor_seg_old', 'tumor_seg_old'),
             ]),
         ])
 
@@ -1357,5 +1370,43 @@ Multi-modal MRI inputs (T1w, T1ce, T2w, FLAIR) were used for segmentation.
 - Label 6: Resection Cavity (RC, optional)
 
 """
+
+    # -------------------------------------------------------------------
+    # Resample tumor segmentation to template space
+    # Uses the anat2std_xfm transform from anatomical preprocessing and
+    # nearest-neighbor interpolation to preserve discrete label values.
+    #
+    # A buffer node captures `tumor_seg_old` from whichever segmentation
+    # branch was taken, feeding both the native-space outputnode field
+    # and the resampling node (avoids an outputnode read-back deadlock).
+    # -------------------------------------------------------------------
+    from nipype.interfaces.ants import ApplyTransforms
+
+    seg_old_buffer = pe.Node(
+        niu.IdentityInterface(fields=['tumor_seg_old']),
+        name='seg_old_buffer',
+    )
+
+    resample_seg_to_std = pe.Node(
+        ApplyTransforms(
+            interpolation='NearestNeighbor',
+            float=True,
+        ),
+        name='resample_seg_to_std',
+        mem_gb=2,
+    )
+
+    workflow.connect([
+        (seg_old_buffer, resample_seg_to_std, [
+            ('tumor_seg_old', 'input_image'),
+        ]),
+        (inputnode, resample_seg_to_std, [
+            ('anat2std_xfm', 'transforms'),
+            ('std_reference', 'reference_image'),
+        ]),
+        (resample_seg_to_std, outputnode, [
+            ('output_image', 'tumor_seg_std'),
+        ]),
+    ])
 
     return workflow

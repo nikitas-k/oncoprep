@@ -24,10 +24,8 @@ regions (Whole Tumor, Tumor Core).
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Dict, List, Optional
+from typing import List, Optional
 
-from nipype import logging as nipype_logging
 from nipype.interfaces import utility as niu
 from nipype.pipeline import engine as pe
 from niworkflows.engine.workflows import LiterateWorkflow as Workflow
@@ -47,6 +45,7 @@ def init_anat_radiomics_wf(
     extract_glszm: bool = True,
     extract_gldm: bool = True,
     extract_ngtdm: bool = True,
+    susan_fwhm: float = 2.0,
     name: str = 'anat_radiomics_wf',
 ) -> Workflow:
     """Create a radiomics feature extraction workflow.
@@ -82,6 +81,10 @@ def init_anat_radiomics_wf(
         Extract Gray-Level Dependence Matrix texture features.
     extract_ngtdm : bool
         Extract Neighbouring Gray Tone Difference Matrix texture features.
+    susan_fwhm : float
+        FWHM for SUSAN edge-preserving denoising in mm (default: 2.0).
+        Applied after histogram normalization but before feature extraction,
+        following Pati et al., AJNR 2024; 45: 1291–1298.
     name : str
         Workflow name (default: ``'anat_radiomics_wf'``).
 
@@ -109,6 +112,7 @@ def init_anat_radiomics_wf(
     """
     from ..interfaces.radiomics import (
         HistogramNormalization,
+        SUSANDenoising,
         PyRadiomicsFeatureExtraction,
         BRATS_OLD_LABEL_MAP,
         BRATS_OLD_LABEL_NAMES,
@@ -122,12 +126,18 @@ Prior to feature extraction, the preprocessed T1-weighted image was
 intensity-normalised using brain-masked z-score standardisation with
 Winsorisation at the 1st and 99th percentiles, following IBSI best-practice
 recommendations for reproducible radiomics [@shinohara2014; @um2019].
+The normalised image was then denoised using SUSAN (Smallest Univalue
+Segment Assimilating Nucleus) edge-preserving smoothing (FWHM = {fwhm} mm),
+which reduces noise while preserving tumor boundaries [@smith1997].
+This preprocessing order (intensity normalisation followed by SUSAN
+denoising) follows the pipeline described in Pati et al., *AJNR* 2024; 45:
+1291–1298.
 Radiomics features were then extracted using *PyRadiomics* [@pyradiomics].
 For each tumor sub-region defined by the BraTS segmentation labels (necrotic
 core, peritumoral edema, enhancing tumor, resection cavity) and composite
 regions (whole tumor, tumor core), shape-based, first-order intensity, and
 texture features (GLCM, GLRLM, GLSZM, GLDM, NGTDM) were computed.
-"""
+""".format(fwhm=susan_fwhm)
 
     inputnode = pe.Node(
         niu.IdentityInterface(
@@ -160,6 +170,13 @@ texture features (GLCM, GLRLM, GLSZM, GLDM, NGTDM) were computed.
         ),
         name='hist_norm',
         mem_gb=2,
+    )
+
+    # --- SUSAN edge-preserving denoising (after intensity normalization) ---
+    susan_denoise = pe.Node(
+        SUSANDenoising(fwhm=susan_fwhm),
+        name='susan_denoise',
+        mem_gb=4,
     )
 
     # --- PyRadiomics extraction node ---
@@ -211,8 +228,15 @@ texture features (GLCM, GLRLM, GLSZM, GLDM, NGTDM) were computed.
             ('t1w_preproc', 'in_file'),
             ('brain_mask', 'in_mask'),
         ]),
-        # Normalized image + tumor seg → extraction
-        (hist_norm, radiomics_extract, [
+        # Normalized image → SUSAN denoising
+        (hist_norm, susan_denoise, [
+            ('out_file', 'in_file'),
+        ]),
+        (inputnode, susan_denoise, [
+            ('brain_mask', 'in_mask'),
+        ]),
+        # Denoised image + tumor seg → extraction
+        (susan_denoise, radiomics_extract, [
             ('out_file', 'in_file'),
         ]),
         (inputnode, radiomics_extract, [
@@ -252,6 +276,7 @@ def init_multimodal_radiomics_wf(
     extract_glszm: bool = False,
     extract_gldm: bool = False,
     extract_ngtdm: bool = False,
+    susan_fwhm: float = 2.0,
     name: str = 'multimodal_radiomics_wf',
 ) -> Workflow:
     """Create a multi-modal radiomics extraction workflow.
@@ -284,6 +309,8 @@ def init_multimodal_radiomics_wf(
         Extract GLDM texture features per modality.
     extract_ngtdm : bool
         Extract NGTDM texture features per modality.
+    susan_fwhm : float
+        FWHM for SUSAN edge-preserving denoising in mm (default: 2.0).
     name : str
         Workflow name.
 
@@ -316,6 +343,7 @@ def init_multimodal_radiomics_wf(
     """
     from ..interfaces.radiomics import (
         HistogramNormalization,
+        SUSANDenoising,
         PyRadiomicsFeatureExtraction,
         BRATS_OLD_LABEL_MAP,
         BRATS_OLD_LABEL_NAMES,
@@ -332,9 +360,15 @@ Multi-modal radiomics features were extracted from preprocessed {mods}
 images using *PyRadiomics* [@pyradiomics]. Each modality was first
 intensity-normalised using brain-masked z-score standardisation with
 Winsorisation at the 1st and 99th percentiles, following IBSI best-practice
-recommendations for reproducible radiomics. Features were then computed for
-each tumor sub-region and composite region using the BraTS segmentation mask.
-""".format(mods=', '.join(m.upper() for m in modalities))
+recommendations for reproducible radiomics. The normalised images were
+then denoised using SUSAN edge-preserving smoothing (FWHM = {fwhm} mm),
+following the preprocessing pipeline of Pati et al., *AJNR* 2024; 45:
+1291–1298. Features were then computed for each tumor sub-region and
+composite region using the BraTS segmentation mask.
+""".format(
+        mods=', '.join(m.upper() for m in modalities),
+        fwhm=susan_fwhm,
+    )
 
     input_fields = ['source_file', 'tumor_seg', 'brain_mask']
     for mod in modalities:
@@ -349,7 +383,7 @@ each tumor sub-region and composite region using the BraTS segmentation mask.
         name='outputnode',
     )
 
-    # Create one normalization + extraction node per modality
+    # Create one normalization + denoising + extraction node per modality
     extract_nodes = {}
     for mod in modalities:
         # Histogram normalization per modality
@@ -361,6 +395,13 @@ each tumor sub-region and composite region using the BraTS segmentation mask.
             ),
             name=f'hist_norm_{mod}',
             mem_gb=2,
+        )
+
+        # SUSAN denoising per modality (after normalization)
+        susan_node = pe.Node(
+            SUSANDenoising(fwhm=susan_fwhm),
+            name=f'susan_denoise_{mod}',
+            mem_gb=4,
         )
 
         node = pe.Node(
@@ -386,8 +427,15 @@ each tumor sub-region and composite region using the BraTS segmentation mask.
                 (f'{mod}_preproc', 'in_file'),
                 ('brain_mask', 'in_mask'),
             ]),
-            # Normalized image + tumor seg → extraction
-            (norm_node, node, [
+            # Normalized image → SUSAN denoising
+            (norm_node, susan_node, [
+                ('out_file', 'in_file'),
+            ]),
+            (inputnode, susan_node, [
+                ('brain_mask', 'in_mask'),
+            ]),
+            # Denoised image + tumor seg → extraction
+            (susan_node, node, [
                 ('out_file', 'in_file'),
             ]),
             (inputnode, node, [
@@ -456,6 +504,29 @@ each tumor sub-region and composite region using the BraTS segmentation mask.
     ])
 
     return workflow
+
+
+def _extract_subject_id(source_file):
+    """Extract BIDS subject ID from a source file path.
+
+    Parameters
+    ----------
+    source_file : str
+        BIDS-style file path (e.g. ``'.../sub-001_ses-01_T1w.nii.gz'``).
+
+    Returns
+    -------
+    str
+        Subject identifier (e.g. ``'sub-001'``).
+    """
+    import os
+    import re
+
+    basename = os.path.basename(source_file)
+    match = re.match(r'(sub-[a-zA-Z0-9]+)', basename)
+    if match:
+        return match.group(1)
+    return basename.split('_')[0]
 
 
 # ---------------------------------------------------------------------------

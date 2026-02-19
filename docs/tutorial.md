@@ -172,7 +172,114 @@ The JSON contains features for each tumor region (NCR, ED, ET, WT, TC)
 across feature classes (shape, first-order, GLCM, GLRLM, GLSZM, GLDM,
 NGTDM).
 
-## Step 5 — Quality control with MRIQC (temporarily disabled)
+## Step 5 — Group-Level ComBat Harmonization (multi-site studies)
+
+If your study includes subjects scanned on different scanners or at
+different sites, radiomics features will contain systematic batch effects.
+OncoPrep's **group-level ComBat harmonization** removes these effects
+while preserving biological covariates.
+
+### Prerequisites
+
+- Participant-level radiomics must be complete for **all** subjects
+  (at least 3 subjects across at least 2 scanner batches)
+- Install the radiomics extras: `pip install "oncoprep[radiomics]"`
+
+### Quick start: auto-generate batch labels
+
+The simplest approach lets OncoPrep derive scanner batch labels from the
+BIDS JSON sidecars (Manufacturer, ManufacturerModelName,
+MagneticFieldStrength — fields that survive anonymization):
+
+```bash
+# Step 1: Run participant-level radiomics for all subjects
+for subj in 001 002 003 004 005 006; do
+  oncoprep bids_output/ derivatives/ participant \
+    --participant-label $subj \
+    --run-radiomics --default-seg
+done
+
+# Step 2: Run group-level ComBat harmonization
+oncoprep bids_output/ derivatives/ group \
+  --generate-combat-batch
+```
+
+This generates:
+- `derivatives/oncoprep/combat_batch.csv` — the auto-generated batch CSV
+- `derivatives/oncoprep/sub-XXX/anat/sub-XXX_desc-radiomicsCombat_features.json` — harmonized features for each subject
+- `derivatives/oncoprep/group_combat_report.html` — summary report
+
+### Custom batch CSV with biological covariates
+
+For more control, provide your own batch CSV with age and sex:
+
+```csv
+subject_id,batch,age,sex
+sub-001,SiteA_Prisma_3T,45,M
+sub-002,SiteA_Prisma_3T,52,F
+sub-003,SiteB_SIGNA_15T,60,M
+sub-004,SiteB_SIGNA_15T,38,F
+sub-005,SiteA_Prisma_3T,71,M
+sub-006,SiteB_SIGNA_15T,44,F
+```
+
+```bash
+oncoprep bids_output/ derivatives/ group \
+  --combat-batch /path/to/site_labels.csv
+```
+
+Age is treated as a continuous covariate and sex as categorical — both
+are **preserved** by ComBat (their variance is not removed).
+
+### Longitudinal datasets
+
+For multi-session studies, OncoPrep automatically detects longitudinal
+data and handles it correctly.  Use observation IDs in the batch CSV:
+
+```csv
+subject_id,batch,age,sex
+sub-001_ses-01,SiteA_Prisma_3T,45,M
+sub-001_ses-02,SiteA_Prisma_3T,46,M
+sub-002_ses-01,SiteB_SIGNA_15T,52,F
+sub-002_ses-02,SiteB_SIGNA_15T,53,F
+```
+
+Or let auto-generation handle it — `--generate-combat-batch` emits one
+row per subject × session automatically.
+
+### Inspect the report
+
+Open the generated HTML report in your browser:
+
+```bash
+open derivatives/oncoprep/group_combat_report.html
+```
+
+The report shows:
+- Number of observations and scanner batches
+- Mean variance change (negative = batch variance reduced)
+- Batch distribution table
+- Longitudinal mode (if detected) with unique subject count
+- List of all harmonized output files
+
+### Python API
+
+```python
+from pathlib import Path
+from oncoprep.workflows.group import run_group_analysis
+
+retcode = run_group_analysis(
+    output_dir=Path("derivatives"),
+    bids_dir=Path("bids_output"),
+    generate_batch_csv=True,       # auto-generate from BIDS sidecars
+    combat_parametric=True,        # parametric empirical Bayes (default)
+)
+assert retcode == 0
+```
+
+For full details, see {doc}`usage/group_combat`.
+
+## Step 6 — Quality control with MRIQC (temporarily disabled)
 
 > **Note:** MRIQC integration is temporarily disabled in this release.
 > The `--run-qc` flag is accepted but ignored. This section is preserved
@@ -195,7 +302,7 @@ Quality metrics are written to `derivatives/mriqc/` and include per-subject
 HTML reports and JSON files with IQMs such as SNR, CNR, CJV, EFC, and FBER.
 -->
 
-## Step 6 — Reports
+## Step 7 — Reports
 
 Generate an HTML quality-assurance report:
 
@@ -723,6 +830,10 @@ derivatives/
 | `--container-runtime` | `auto` / `docker` / `singularity` / `apptainer` | `auto` |
 | `--seg-cache-dir` | Pre-downloaded model cache | Auto |
 | `--run-radiomics` | Feature extraction | Off |
+| `--combat-batch CSV` | Custom batch CSV for group-level ComBat | None |
+| `--combat-parametric` | Parametric empirical Bayes for ComBat | `True` |
+| `--combat-nonparametric` | Non-parametric ComBat | Off |
+| `--generate-combat-batch` | Auto-generate batch CSV from BIDS | Off |
 | `--run-qc` | MRIQC quality control (**temporarily disabled**) | Off |
 | `--nprocs` | CPU count | All available |
 | `--omp-nthreads` | Threads per process | Auto |

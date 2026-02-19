@@ -1,0 +1,16 @@
+VASARI KEY FINDINGS
+
+  - Location: Frontal Lobe
+  - Laterality: Right
+  - Enhancement: Marked/Avid
+  - Enhancing proportion: 6–33%
+  - Enhancing margin: Thick (>3×)
+  - Ependymal invasion: Absent
+  - Cortical involvement: Present
+  - Deep WM invasion: Absent
+  - Midline crossing (nCET): Does not cross midline
+  - Midline crossing (CET): Does not cross midline
+  - Multifocal: Not multifocal
+  - Satellites: Absent
+
+NOTE: Automated assessment, not for clinical use.

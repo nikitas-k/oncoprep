@@ -333,11 +333,52 @@ def get_parser():
         '(requires pyradiomics; implies --run-segmentation)',
     )
     g_conf.add_argument(
+        '--run-vasari',
+        action='store_true',
+        help='run automated VASARI feature extraction and radiology report '
+        'generation on tumor segmentations '
+        '(requires vasari-auto; implies --run-segmentation)',
+    )
+    g_conf.add_argument(
         '--run-qc',
         action='store_true',
         help='[TEMPORARILY DISABLED] MRIQC quality control integration is '
         'non-functional in this release and will be re-enabled in a future '
         'version. This flag is accepted but ignored.',
+    )
+    g_conf.add_argument(
+        '--combat-batch',
+        action='store',
+        type=Path,
+        metavar='CSV',
+        help='CSV file mapping subjects to scanner/site batches for ComBat '
+        'harmonization (group-level analysis).  Must contain columns: '
+        'subject_id, batch.  Optional covariate columns (e.g. age, sex) '
+        'are preserved as biological covariates of interest.',
+    )
+    g_conf.add_argument(
+        '--combat-parametric',
+        action='store_true',
+        default=True,
+        help='use parametric empirical Bayes priors for ComBat '
+        '(default: True).',
+    )
+    g_conf.add_argument(
+        '--combat-nonparametric',
+        action='store_true',
+        default=False,
+        help='use non-parametric empirical Bayes for ComBat harmonization.',
+    )
+    g_conf.add_argument(
+        '--generate-combat-batch',
+        action='store_true',
+        default=False,
+        help='auto-generate the ComBat batch CSV from BIDS JSON sidecars.  '
+        'Extracts Manufacturer, ManufacturerModelName, and '
+        'MagneticFieldStrength (fields that survive anonymization) to '
+        'construct scanner-level batch labels.  The generated CSV is '
+        'written to <output_dir>/oncoprep/combat_batch.csv and used '
+        'for harmonization unless --combat-batch is also provided.',
     )
     
     # ANTs options
@@ -527,6 +568,35 @@ def build_opts(opts):
     logging.addLevelName(25, 'IMPORTANT')
     logging.addLevelName(15, 'VERBOSE')
     logger = logging.getLogger('cli')
+
+    # --- Group-level analysis branch ---
+    if getattr(opts, 'analysis_level', 'participant') == 'group':
+        from oncoprep.workflows.group import run_group_analysis
+
+        output_dir = opts.output_dir.resolve()
+        combat_batch = (
+            str(opts.combat_batch.resolve())
+            if getattr(opts, 'combat_batch', None)
+            else None
+        )
+        combat_parametric = not getattr(opts, 'combat_nonparametric', False)
+        participant_label = getattr(opts, 'participant_label', None)
+
+        generate_batch = getattr(opts, 'generate_combat_batch', False)
+        bids_dir = opts.bids_dir.resolve()
+
+        logger.log(25, 'Running group-level analysis on %s', output_dir)
+        retcode = run_group_analysis(
+            output_dir=output_dir,
+            bids_dir=bids_dir,
+            combat_batch_file=combat_batch,
+            combat_parametric=combat_parametric,
+            participant_label=participant_label,
+            generate_batch_csv=generate_batch,
+        )
+        sys.exit(retcode)
+    
+    # --- Participant-level analysis (default) ---
     
     def _warn_redirect(message, category, filename, lineno, file=None, line=None):
         logger.warning('Captured warning (%s): %s', category, message)
@@ -823,8 +893,9 @@ def build_workflow(opts, retval):
         output_spaces=opts.output_spaces,
         use_gpu=not opts.no_gpu,
         deface=opts.deface,
-        run_segmentation=opts.run_segmentation or opts.run_radiomics,
+        run_segmentation=opts.run_segmentation or opts.run_radiomics or opts.run_vasari,
         run_radiomics=opts.run_radiomics,
+        run_vasari=opts.run_vasari,
         run_qc=False,
         seg_model_path=opts.seg_model_path,
         default_seg=opts.default_seg,

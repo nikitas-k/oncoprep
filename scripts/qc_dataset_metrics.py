@@ -97,24 +97,86 @@ DATASET_SPECS: Dict[str, Dict[str, Any]] = {
         "seg_suffix": None,
         "layout": "acrin",
     },
+    # ---- Additional BraTS challenge datasets ----
+    "brats_ssa": {
+        "display": "BraTS-SSA-2023",
+        "subdir": "ASNR-MICCAI-BraTS2023-SSA-Challenge-TrainingData_V2",
+        "modality_suffixes": {"t1c": "ce-T1w", "t1n": "T1w", "t2f": "FLAIR", "t2w": "T2w"},
+        "seg_suffix": "seg",
+        "layout": "brats",
+    },
+    "brats_gli_pre": {
+        "display": "BraTS2025-GLI-PRE",
+        "subdir": "BraTS2025-GLI-PRE-Challenge-TrainingData",
+        "modality_suffixes": {"t1c": "ce-T1w", "t1n": "T1w", "t2f": "FLAIR", "t2w": "T2w"},
+        "seg_suffix": "seg",
+        "layout": "brats",
+    },
+    "brats_met_2025": {
+        "display": "BraTS2025-MET",
+        "subdir": "MICCAI-LH-BraTS2025-MET-Challenge-Training",
+        "modality_suffixes": {"t1c": "ce-T1w", "t1n": "T1w", "t2f": "FLAIR", "t2w": "T2w"},
+        "seg_suffix": "seg",
+        "layout": "brats",
+    },
+    "brats_goat": {
+        "display": "BraTS-GoAT-2024",
+        "subdir": "MICCAI2024-BraTS-GoAT-TrainingData-With-GroundTruth",
+        "modality_suffixes": {"t1c": "ce-T1w", "t1n": "T1w", "t2f": "FLAIR", "t2w": "T2w"},
+        "seg_suffix": "seg",
+        "layout": "brats",
+    },
+    # ---- TCIA / public datasets with segmentations ----
+    "glis_rt": {
+        "display": "GLIS-RT",
+        "subdir": "GLIS-RT",
+        "modality_suffixes": {},  # DICOM
+        "seg_suffix": None,  # RTSTRUCT, not voxel labels
+        "layout": "glis_rt",  # Custom: manifest/GLIS-RT/GLI_NNN_TYPE/date/series/
+    },
+    "lumiere": {
+        "display": "LUMIERE",
+        "subdir": "LUMIERE",
+        "modality_suffixes": {"CT1": "ce-T1w", "T1": "T1w", "T2": "T2w", "FLAIR": "FLAIR"},
+        "seg_suffix": None,  # Multiple seg sources in subdirs
+        "layout": "lumiere",  # Custom: Imaging/Patient-NNN/week-NNN/
+    },
 }
 
 
 def _find_brats_subjects(root: Path) -> List[Path]:
-    """Collect BraTS subject dirs from training* / Train subdirs."""
+    """Collect BraTS subject dirs from training* / Train subdirs.
+
+    Handles:
+    - All subjects directly under root (e.g. BraTS-GoAT, BraTS-SSA)
+    - Subjects in training split subdirs (e.g. training_data1/)
+    - Mixed layout with subjects at root + sub-splits (BraTS2025-MET)
+    """
     subjects = []
+    split_subjects = []
     for child in sorted(root.iterdir()):
         if not child.is_dir():
             continue
-        name_lower = child.name.lower()
-        # Match: training_data1, training_data_additional, BraTS-MEN-Train,
-        #        MICCAI-BraTS2024-MET-Challenge-Training_1, etc.
-        if "train" in name_lower:
-            subjects.extend(sorted(d for d in child.iterdir() if d.is_dir()))
-    # Fallback: subjects directly under root
-    if not subjects:
-        subjects = sorted(d for d in root.iterdir() if d.is_dir())
-    return subjects
+        name = child.name
+        name_lower = name.lower()
+        # Skip validation directories (no ground truth labels)
+        if "validation" in name_lower:
+            continue
+        # Check if this is a split/container directory (not a subject itself)
+        is_split = any(k in name_lower for k in ("train", "challenge"))
+        if name.startswith("BraTS-") and not is_split:
+            # Direct BraTS subject folder at root level
+            subjects.append(child)
+        elif is_split:
+            # Split subdirectory containing subject folders
+            split_subjects.extend(sorted(d for d in child.iterdir() if d.is_dir()))
+    # Combine both sources (dedup by name)
+    seen = {s.name for s in subjects}
+    for s in split_subjects:
+        if s.name not in seen:
+            subjects.append(s)
+            seen.add(s.name)
+    return sorted(subjects, key=lambda p: p.name)
 
 
 def _find_upenn_subjects(root: Path) -> List[Path]:
@@ -163,6 +225,37 @@ def _find_acrin_subjects(root: Path) -> List[Path]:
     return []
 
 
+def _find_glis_rt_subjects(root: Path) -> List[Path]:
+    """GLIS-RT TCIA dataset: subjects under manifest-*/GLIS-RT/GLI_NNN_TYPE."""
+    for mdir in sorted(root.iterdir()):
+        if not mdir.is_dir() or not mdir.name.startswith("manifest"):
+            continue
+        inner = mdir / "GLIS-RT"
+        if inner.exists():
+            return sorted(
+                d for d in inner.iterdir()
+                if d.is_dir() and d.name.startswith("GLI_")
+            )
+    return sorted(
+        d for d in root.iterdir()
+        if d.is_dir() and d.name.startswith("GLI_")
+    )
+
+
+def _find_lumiere_subjects(root: Path) -> List[Path]:
+    """LUMIERE: patients under Imaging/Patient-NNN/."""
+    imaging = root / "Imaging"
+    if imaging.exists():
+        return sorted(
+            d for d in imaging.iterdir()
+            if d.is_dir() and d.name.startswith("Patient-")
+        )
+    return sorted(
+        d for d in root.iterdir()
+        if d.is_dir() and d.name.startswith("Patient-")
+    )
+
+
 def discover_subjects(ds_key: str, volume: Path) -> List[Path]:
     spec = DATASET_SPECS[ds_key]
     root = volume / spec["subdir"]
@@ -179,6 +272,10 @@ def discover_subjects(ds_key: str, volume: Path) -> List[Path]:
         return _find_ucsf_subjects(root)
     elif layout == "acrin":
         return _find_acrin_subjects(root)
+    elif layout == "glis_rt":
+        return _find_glis_rt_subjects(root)
+    elif layout == "lumiere":
+        return _find_lumiere_subjects(root)
     else:
         return _find_flat_subjects(root)
 
@@ -435,6 +532,111 @@ def _run_dicom_dataset_qc(
 # Dataset-level QC (NIfTI datasets)
 # ---------------------------------------------------------------------------
 
+def _run_lumiere_qc(
+    sample: List[Path],
+    result: Dict[str, Any],
+    spec: Dict[str, Any],
+) -> Dict[str, Any]:
+    """QC for LUMIERE: NIfTI multi-session patients with subdirectory segs."""
+    mod_suffixes = spec["modality_suffixes"]
+    modality_found = {m: 0 for m in mod_suffixes}
+    total_sessions = 0
+
+    for patient_dir in sample:
+        # Each patient has week-NNN[-rep] session dirs
+        session_dirs = sorted(
+            d for d in patient_dir.iterdir()
+            if d.is_dir() and d.name.startswith("week-")
+        )
+        total_sessions += len(session_dirs)
+
+        for ses_dir in session_dirs:
+            # Check structural modalities
+            for src_name, bids_name in mod_suffixes.items():
+                fpath = ses_dir / f"{src_name}.nii.gz"
+                if fpath.exists():
+                    modality_found[src_name] += 1
+                    qc = compute_image_qc(fpath)
+                    if "error" not in qc:
+                        sh_key = "×".join(str(s) for s in qc["shape"])
+                        result["shapes"][sh_key] = result["shapes"].get(sh_key, 0) + 1
+                        if "snr_otsu" in qc:
+                            result["snr_values"].append(qc["snr_otsu"])
+                        if "dropout_frac" in qc:
+                            result["dropout_values"].append(qc["dropout_frac"])
+                else:
+                    result["missing_modality_subjects"][bids_name] = (
+                        result["missing_modality_subjects"].get(bids_name, 0) + 1
+                    )
+
+            # Check segmentations in subdirs
+            for seg_key in ["HD-GLIO-AUTO-segmentation", "DeepBraTumIA-segmentation"]:
+                seg_base = ses_dir / seg_key
+                if not seg_base.exists():
+                    continue
+                # HD-GLIO: native/segmentation_CT1_origspace.nii.gz
+                # DeepBraTumIA: native/segmentation/ct1_seg_mask.nii.gz
+                seg_candidates = list(seg_base.rglob("*.nii.gz"))
+                for seg_path in seg_candidates[:1]:  # Just QC first seg per method
+                    sqc = compute_seg_qc(seg_path)
+                    if "error" not in sqc:
+                        for lbl in sqc.get("labels_present", []):
+                            result["seg_label_counts"][str(lbl)] = (
+                                result["seg_label_counts"].get(str(lbl), 0) + 1
+                            )
+                        if sqc.get("volume_cc") is not None:
+                            result["seg_volumes_cc"].append(sqc["volume_cc"])
+
+    # Summary
+    total_mod_checks = total_sessions  # Each session should have each modality
+    modality_comp = {}
+    for src_name, bids_name in mod_suffixes.items():
+        modality_comp[bids_name] = round(
+            modality_found[src_name] / max(total_mod_checks, 1) * 100, 1
+        )
+    result["modality_completeness"] = modality_comp
+    result["lumiere_summary"] = {
+        "total_sessions": total_sessions,
+        "avg_sessions_per_patient": round(total_sessions / max(len(sample), 1), 1),
+    }
+
+    snrs = result["snr_values"]
+    if snrs:
+        result["snr_summary"] = {
+            "median": round(float(np.median(snrs)), 2),
+            "iqr": [round(float(np.percentile(snrs, 25)), 2),
+                    round(float(np.percentile(snrs, 75)), 2)],
+            "min": round(float(np.min(snrs)), 2),
+            "max": round(float(np.max(snrs)), 2),
+        }
+    drops = result["dropout_values"]
+    if drops:
+        result["dropout_summary"] = {
+            "median": round(float(np.median(drops)), 3),
+            "max": round(float(np.max(drops)), 3),
+            "n_above_20pct": sum(1 for d in drops if d > 0.2),
+        }
+    segs = result["seg_volumes_cc"]
+    if segs:
+        result["seg_volume_summary_cc"] = {
+            "median": round(float(np.median(segs)), 2),
+            "iqr": [round(float(np.percentile(segs, 25)), 2),
+                    round(float(np.percentile(segs, 75)), 2)],
+            "min": round(float(np.min(segs)), 2),
+            "max": round(float(np.max(segs)), 2),
+        }
+
+    # Convert for JSON
+    result["shapes"] = dict(result["shapes"])
+    result["seg_label_counts"] = dict(result["seg_label_counts"])
+    result["missing_modality_subjects"] = dict(result["missing_modality_subjects"])
+    del result["snr_values"]
+    del result["dropout_values"]
+    del result["seg_volumes_cc"]
+
+    return result
+
+
 def run_dataset_qc(
     ds_key: str,
     volume: Path,
@@ -469,9 +671,13 @@ def run_dataset_qc(
 
     result["subjects_sampled"] = len(sample)
 
-    # ---- DICOM-only datasets (ACRIN) ----
-    if spec["layout"] == "acrin":
+    # ---- DICOM-only datasets (ACRIN, GLIS-RT) ----
+    if spec["layout"] in ("acrin", "glis_rt"):
         return _run_dicom_dataset_qc(sample, result, spec)
+
+    # ---- LUMIERE: NIfTI but multi-session per patient ----
+    if spec["layout"] == "lumiere":
+        return _run_lumiere_qc(sample, result, spec)
 
     mod_suffixes = spec["modality_suffixes"]
     modality_found = {m: 0 for m in mod_suffixes}

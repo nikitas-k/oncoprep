@@ -1,5 +1,106 @@
 # Changelog
 
+## 0.2.3 (2025-02-19)
+
+### Features
+
+- **Group-level ComBat harmonization** — new `analysis_level = group` stage
+  removes scanner/site batch effects from radiomics features across an entire
+  cohort using neuroCombat (Fortin et al., *NeuroImage* 2018), following the
+  methodology of Pati et al. (*AJNR* 2024).
+  - Operates on participant-level radiomics JSON outputs; writes harmonized
+    per-subject (or per-session) `*_desc-radiomicsCombat_features.json` files.
+  - Auto-generates batch CSV from BIDS sidecars (`--generate-combat-batch`)
+    using `Manufacturer`, `ManufacturerModelName`, and
+    `MagneticFieldStrength` (fields that survive anonymization).
+  - Extracts age and sex from JSON sidecars (`PatientAge`/`Age`,
+    `PatientSex`/`Sex`) with fallback to `participants.tsv`; forwards them
+    as biological covariates preserved by ComBat.
+  - **Longitudinal auto-detection**: when multiple sessions per subject are
+    found, each session is treated as a separate observation.  If subjects
+    cross batches (scanned at different sites), subject identity is added as
+    a categorical covariate; otherwise, sessions are treated as independent
+    observations with within-subject variance naturally preserved.
+  - Group-level HTML report (`group_combat_report.html`) with summary cards
+    (observations, batches, features, variance change), batch distribution
+    table, longitudinal mode indicator, and output file listing.
+  - New CLI flags: `--combat-batch`, `--combat-parametric`,
+    `--combat-nonparametric`, `--generate-combat-batch`.
+  - New module: `oncoprep.workflows.group` with public API
+    `run_group_analysis()` and `generate_combat_batch_csv()`.
+- **SUSAN denoising** — pure-Python SUSAN non-linear noise reduction
+  (`SUSANDenoising` interface) applied after histogram normalization in
+  the radiomics workflow.  Edge-preserving smoothing reduces noise while
+  maintaining tumor boundary detail.
+
+### Documentation
+
+- New docs page: `usage/group_combat.md` — full reference for batch CSV
+  format, age/sex extraction, longitudinal handling, output files, CLI
+  flags, and Python API.
+- Tutorial Step 5 added for group-level ComBat harmonization (quick start,
+  custom batch CSV with biological covariates, longitudinal datasets,
+  report inspection, Python API).
+- README architecture diagram updated to show two-stage
+  participant/group pipeline with group-level ComBat stage.
+- README features table updated with ComBat harmonization and SUSAN
+  denoising entries.
+- CLI reference updated with group-level ComBat flags.
+- Sphinx toctree updated to include `usage/group_combat`.
+
+### Tests
+
+- `TestGroupComBat` — 8 tests for cross-sectional ComBat (collection,
+  filtering, Combat-file exclusion, harmonization, site-effect reduction,
+  error handling, flatten/unflatten roundtrip).
+- `TestLongitudinalComBat` — 5 tests for longitudinal ComBat (per-session
+  collection, participant filtering, harmonization run, report content,
+  cross-sectional report verification).
+- `TestBatchCsvGeneration` — 4 tests for batch CSV generation (basic output,
+  age/sex from sidecars, `participants.tsv` fallback, per-session rows).
+
+## 0.2.2 (2025-02-19)
+
+### Features
+
+- **Template-space tumor segmentation resampling** — both segmentation
+  backends (nnInteractive and Docker ensemble) now resample the native-space
+  tumor segmentation into the chosen template space (MNI152 or SRI24) using
+  ANTs `ApplyTransforms` with nearest-neighbor interpolation.  The resampled
+  segmentation is exposed as `outputnode.tumor_seg_std`.
+- **VASARI atlas space selection** — `init_vasari_wf()` accepts an
+  `atlas_space` parameter (`'mni152'`, `'MNI152NLin2009cAsym'`, or `'SRI24'`)
+  and passes the pre-resampled segmentation directly to vasari-auto, skipping
+  its internal ANTs SyN registration entirely.
+- **Bundled atlas masks** — anatomical atlas ROI masks for MNI152 and SRI24
+  are now shipped inside OncoPrep at `data/atlas_masks/{mni152,sri24}/`.
+  Helper functions `get_atlas_dir()` and `get_atlas_reference()` resolve
+  TemplateFlow-style space names to the correct local directory.
+
+### vasari-auto upstream fixes
+
+- Fixed `ATLAS_AFFINE` crash: vasari-auto loaded the MNI reference brain
+  from a CWD-relative path (`atlas_masks/MNI152_T1_1mm_brain.nii.gz`) at
+  module-import time, causing `FileNotFoundError` when run from any other
+  directory.  Now resolved via `__file__`-relative path.
+- Added `template_space` parameter to `get_vasari_features()` — accepted
+  values: `'mni152'`, `'MNI152NLin2009cAsym'`, `'MNI152NLin6Asym'`,
+  `'SRI24'`.  Defaults to `'mni152'`.
+- Atlas masks are now organised into `atlas_masks/{mni152,sri24}/`
+  subdirectories with per-space reference brains.
+- `pyproject.toml` updated to include `atlas_masks/**/*.nii.gz` in the
+  package distribution (previously missing from installs).
+- `__init__.py` switched to lazy import via `__getattr__` to avoid loading
+  heavy dependencies (ANTs, scipy, sklearn) at package-import time.
+- `utils.py` `register_to_mni()` now auto-detects the reference brain
+  filename (MNI152 or SRI24) in the atlas directory.
+
+### Bug Fixes
+
+- Fixed `_import_vasari_auto()` in OncoPrep — no longer requires
+  CWD manipulation or temporary symlinks; uses a straightforward import
+  now that vasari-auto resolves paths correctly.
+
 ## 0.2.1 (2025-02-18)
 
 ### Features

@@ -27,6 +27,15 @@ pip install oncoprep
 pip install "oncoprep[radiomics]"
 ```
 
+### VASARI feature extraction
+
+```bash
+pip install "oncoprep[vasari]"
+```
+
+Requires `vasari-auto` from GitHub (no PyPI package). The extra installs
+directly from `git+https://github.com/nikitas-k/vasari-auto.git`.
+
 ### HD-BET skull stripping
 
 ```bash
