@@ -88,7 +88,6 @@ packages = [
   "oncoprep.dicom",
   "oncoprep.interfaces",
   "oncoprep.io",
-  "oncoprep.reports",
   "oncoprep.utils",
   "oncoprep.workflows",
   "oncoprep.workflows.fit",
@@ -97,5 +96,4 @@ packages = [
 [tool.setuptools.package-data]
 "oncoprep.config" = ["*.json"]
 "oncoprep.data" = ["*.txt", "atlas_masks/mni152/*.nii.gz", "atlas_masks/sri24/*.nii.gz"]
-"oncoprep.reports" = ["*.j2", "*.css", "*.html"]
 

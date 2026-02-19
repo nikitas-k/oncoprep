@@ -19,7 +19,7 @@ FROM --platform=linux/amd64 python:${PYTHON_VERSION}-slim AS base
 LABEL maintainer="OncoPrep Contributors"
 LABEL org.opencontainers.image.title="OncoPrep"
 LABEL org.opencontainers.image.description="Neuro-oncology MRI preprocessing pipeline"
-LABEL org.opencontainers.image.version="0.2.1"
+LABEL org.opencontainers.image.version="0.2.2"
 LABEL org.opencontainers.image.licenses="Apache-2.0"
 LABEL org.opencontainers.image.source="https://github.com/neuronets/oncoprep"
 
@@ -142,8 +142,8 @@ RUN pip install --no-cache-dir "numpy<2"
 # Install pyradiomics from source (needs numpy in build env, skip PEP 517 isolation)
 RUN pip install --no-cache-dir --no-build-isolation "pyradiomics==3.0.1"
 
-# Install OncoPrep and all core dependencies (including radiomics)
-RUN pip install --no-cache-dir -e ".[dev,radiomics]"
+# Install OncoPrep and all core dependencies (including radiomics, vasari, combat)
+RUN pip install --no-cache-dir -e ".[dev,radiomics,vasari]"
 
 # Pre-fetch ALL TemplateFlow templates used by OncoPrep
 # (ensures offline operation on HPC / air-gapped systems)
