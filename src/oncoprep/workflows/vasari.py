@@ -222,7 +222,7 @@ labels.
     ds_radiology_txt = pe.Node(
         DerivativesDataSink(
             base_directory=output_dir,
-            desc='vasariRadiology',
+            desc='vasariRadiologyText',
             suffix='report',
             datatype='figures',
             compress=False,

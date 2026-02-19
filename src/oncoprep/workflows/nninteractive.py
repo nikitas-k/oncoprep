@@ -25,7 +25,6 @@ References
 """
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Optional
 
 from nipype.interfaces import utility as niu

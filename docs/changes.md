@@ -1,9 +1,14 @@
 # Changelog
 
-## 0.2.3 (2025-02-19)
+## 0.2.2 (2025-02-19)
 
 ### Features
 
+- **VASARI section in subject HTML report** — the master subject report
+  (`sub-XXX.html`) now includes a "VASARI" section after Radiomics,
+  containing the automated VASARI feature assessment table and the
+  AI-generated radiology report.  Both are collated from figures-directory
+  reportlets and conditionally rendered with a navbar link.
 - **Group-level ComBat harmonization** — new `analysis_level = group` stage
   removes scanner/site batch effects from radiomics features across an entire
   cohort using neuroCombat (Fortin et al., *NeuroImage* 2018), following the
@@ -32,37 +37,6 @@
   (`SUSANDenoising` interface) applied after histogram normalization in
   the radiomics workflow.  Edge-preserving smoothing reduces noise while
   maintaining tumor boundary detail.
-
-### Documentation
-
-- New docs page: `usage/group_combat.md` — full reference for batch CSV
-  format, age/sex extraction, longitudinal handling, output files, CLI
-  flags, and Python API.
-- Tutorial Step 5 added for group-level ComBat harmonization (quick start,
-  custom batch CSV with biological covariates, longitudinal datasets,
-  report inspection, Python API).
-- README architecture diagram updated to show two-stage
-  participant/group pipeline with group-level ComBat stage.
-- README features table updated with ComBat harmonization and SUSAN
-  denoising entries.
-- CLI reference updated with group-level ComBat flags.
-- Sphinx toctree updated to include `usage/group_combat`.
-
-### Tests
-
-- `TestGroupComBat` — 8 tests for cross-sectional ComBat (collection,
-  filtering, Combat-file exclusion, harmonization, site-effect reduction,
-  error handling, flatten/unflatten roundtrip).
-- `TestLongitudinalComBat` — 5 tests for longitudinal ComBat (per-session
-  collection, participant filtering, harmonization run, report content,
-  cross-sectional report verification).
-- `TestBatchCsvGeneration` — 4 tests for batch CSV generation (basic output,
-  age/sex from sidecars, `participants.tsv` fallback, per-session rows).
-
-## 0.2.2 (2025-02-19)
-
-### Features
-
 - **Template-space tumor segmentation resampling** — both segmentation
   backends (nnInteractive and Docker ensemble) now resample the native-space
   tumor segmentation into the chosen template space (MNI152 or SRI24) using
@@ -95,11 +69,63 @@
 - `utils.py` `register_to_mni()` now auto-detects the reference brain
   filename (MNI152 or SRI24) in the atlas directory.
 
+### Documentation
+
+- New docs page: `usage/group_combat.md` — full reference for batch CSV
+  format, age/sex extraction, longitudinal handling, output files, CLI
+  flags, and Python API.
+- Tutorial Step 5 added for group-level ComBat harmonization (quick start,
+  custom batch CSV with biological covariates, longitudinal datasets,
+  report inspection, Python API).
+- README architecture diagram updated to show two-stage
+  participant/group pipeline with group-level ComBat stage.
+- README features table updated with ComBat harmonization and SUSAN
+  denoising entries.
+- CLI reference updated with group-level ComBat flags.
+- Sphinx toctree updated to include `usage/group_combat`.
+
+### Tests
+
+- `TestGroupComBat` — 8 tests for cross-sectional ComBat (collection,
+  filtering, Combat-file exclusion, harmonization, site-effect reduction,
+  error handling, flatten/unflatten roundtrip).
+- `TestLongitudinalComBat` — 5 tests for longitudinal ComBat (per-session
+  collection, participant filtering, harmonization run, report content,
+  cross-sectional report verification).
+- `TestBatchCsvGeneration` — 4 tests for batch CSV generation (basic output,
+  age/sex from sidecars, `participants.tsv` fallback, per-session rows).
+
 ### Bug Fixes
 
+- **MPS crash in nnInteractive subprocess** — Apple Metal/MPS device
+  initialization aborts when called inside a Nipype `forkserver` worker
+  process (triggered by a macOS update).  Fixed via three layers:
+  (1) `run_without_submitting=True` on the segmentation node keeps it in
+  the main process where MPS works;
+  (2) `_in_subprocess()` CPU-fallback safety net in the interface;
+  (3) `--nprocs 1` automatically selects the `Linear` plugin.
+- **VASARI radiology report DerivativesDataSink path error** — `Could not
+  build path with entities` for `suffix='report'` with `.html`/`.txt`
+  extensions.  Added `suffix<report>` to `_ONCOPREP_EXTRA_PATTERNS` in the
+  figures BIDS pattern and set `datatype='figures'` on the radiology sinks.
+- **Ambiguous radiology sink entities** — `ds_radiology_html` and
+  `ds_radiology_txt` previously shared the same `desc='vasariRadiology'`;
+  the text sink now uses `desc='vasariRadiologyText'` to prevent path
+  collisions.
 - Fixed `_import_vasari_auto()` in OncoPrep — no longer requires
   CWD manipulation or temporary symlinks; uses a straightforward import
   now that vasari-auto resolves paths correctly.
+
+### Housekeeping
+
+- Added VASARI references to `REFERENCES` string: Ruffle et al. 2024
+  (VASARI-auto) and Gutman et al. 2013 (original VASARI feature set).
+- Removed dead code: `src/oncoprep/reports/` package (unused `report.py`
+  and `template.html.j2` — report generation uses `utils/collate.py`).
+- Consolidated `base.py` imports at top of file, removed unused
+  `init_anat_reports_wf` import — fixed all 11 ruff errors.
+- Removed unused imports in `interfaces/nninteractive.py` (`Optional`)
+  and `workflows/nninteractive.py` (`Path`).
 
 ## 0.2.1 (2025-02-18)
 
