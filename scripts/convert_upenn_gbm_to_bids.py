@@ -11,8 +11,8 @@ BIDS mapping:
     T1GD.nii.gz  → sub-{ID}/anat/sub-{ID}_ce-T1w.nii.gz
     T2.nii.gz    → sub-{ID}/anat/sub-{ID}_T2w.nii.gz
     FLAIR.nii.gz → sub-{ID}/anat/sub-{ID}_FLAIR.nii.gz
-    *_segm       → derivatives/ground-truth/.../sub-{ID}_dseg.nii.gz
-    *_auto_segm  → derivatives/automated-segm/.../sub-{ID}_dseg.nii.gz
+    *_segm       → derivatives/ground-truth/.../sub-{ID}_desc-tumorOld_dseg.nii.gz
+    *_auto_segm  → derivatives/automated-segm/.../sub-{ID}_desc-tumorOld_dseg.nii.gz
 
 Usage:
     python scripts/convert_upenn_gbm_to_bids.py \\
@@ -125,20 +125,20 @@ def main() -> None:
         if raw_id in manual_segs:
             seg_out = gt_deriv / sub_str / "anat"
             seg_out.mkdir(parents=True, exist_ok=True)
-            dst = seg_out / f"{sub_str}_dseg.nii.gz"
+            dst = seg_out / f"{sub_str}_desc-tumorOld_dseg.nii.gz"
             copy_fn(manual_segs[raw_id], dst)
             has_seg = True
 
         if raw_id in auto_segs:
             seg_out = auto_deriv / sub_str / "anat"
             seg_out.mkdir(parents=True, exist_ok=True)
-            dst = seg_out / f"{sub_str}_dseg.nii.gz"
+            dst = seg_out / f"{sub_str}_desc-tumorOld_dseg.nii.gz"
             copy_fn(auto_segs[raw_id], dst)
             if not has_seg:
                 # Also place in primary ground-truth as fallback
                 gt_out = gt_deriv / sub_str / "anat"
                 gt_out.mkdir(parents=True, exist_ok=True)
-                gt_dst = gt_out / f"{sub_str}_dseg.nii.gz"
+                gt_dst = gt_out / f"{sub_str}_desc-tumorOld_dseg.nii.gz"
                 copy_fn(auto_segs[raw_id], gt_dst)
             has_seg = True
 

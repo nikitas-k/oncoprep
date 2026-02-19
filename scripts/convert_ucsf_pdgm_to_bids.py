@@ -10,7 +10,7 @@ BIDS mapping (structural → rawdata, segs → derivatives/ground-truth):
     T2.nii.gz           → sub-{ID}/anat/sub-{ID}_T2w.nii.gz
     FLAIR.nii.gz        → sub-{ID}/anat/sub-{ID}_FLAIR.nii.gz
     SWI.nii.gz          → sub-{ID}/anat/sub-{ID}_T2starw.nii.gz
-    tumor_segmentation  → derivatives/.../sub-{ID}/anat/sub-{ID}_dseg.nii.gz
+    tumor_segmentation  → derivatives/.../sub-{ID}/anat/sub-{ID}_desc-tumorOld_dseg.nii.gz
     brain_segmentation  → derivatives/.../sub-{ID}/anat/sub-{ID}_desc-brain_mask.nii.gz
 
 Usage:
@@ -40,7 +40,7 @@ MODALITY_MAP: Dict[str, str] = {
 
 # Files that go into derivatives/ground-truth
 SEGMENTATION_MAP: Dict[str, str] = {
-    "tumor_segmentation":              "dseg",
+    "tumor_segmentation":              "desc-tumorOld_dseg",
     "tumor_segmentation_et":           "label-ET_mask",
     "tumor_core":                      "label-TC_mask",
     "whole_tumor":                     "label-WT_mask",

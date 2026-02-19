@@ -6,7 +6,7 @@ Supports all BraTS challenge datasets that share the naming convention:
     {SubjectID}-t1n.nii.gz  →  sub-{ID}/anat/sub-{ID}_T1w.nii.gz
     {SubjectID}-t2f.nii.gz  →  sub-{ID}/anat/sub-{ID}_FLAIR.nii.gz
     {SubjectID}-t2w.nii.gz  →  sub-{ID}/anat/sub-{ID}_T2w.nii.gz
-    {SubjectID}-seg.nii.gz  →  derivatives/ground-truth/sub-{ID}/anat/sub-{ID}_dseg.nii.gz
+    {SubjectID}-seg.nii.gz  →  derivatives/ground-truth/sub-{ID}/anat/sub-{ID}_desc-tumorOld_dseg.nii.gz
 
 Supported datasets:
     - BraTS-GLI-2024 (adult glioma)
@@ -165,7 +165,7 @@ def convert_subject(
     # Process segmentation → derivatives
     seg_src = subject_dir / f"{raw_id}-seg.nii.gz"
     if seg_src.exists():
-        seg_dst = deriv_anat_dir / f"{sub_str}_{ses_str}_dseg.nii.gz"
+        seg_dst = deriv_anat_dir / f"{sub_str}_{ses_str}_desc-tumorOld_dseg.nii.gz"
         copy_fn(seg_src, seg_dst)
     else:
         print(f"  WARN: missing segmentation for {raw_id}")
@@ -291,7 +291,7 @@ def main() -> None:
             sub_label, ses_label, _ = parsed
             sub_str = f"sub-{sub_label}"
             ses_str = f"ses-{ses_label}"
-            dst = deriv_dir / sub_str / ses_str / "anat" / f"{sub_str}_{ses_str}_dseg.nii.gz"
+            dst = deriv_dir / sub_str / ses_str / "anat" / f"{sub_str}_{ses_str}_desc-tumorOld_dseg.nii.gz"
             dst.parent.mkdir(parents=True, exist_ok=True)
             copy_fn(seg_file, dst)
             n_corrected += 1

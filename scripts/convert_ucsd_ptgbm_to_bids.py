@@ -10,7 +10,7 @@ BIDS mapping:
     T1post  → sub-{ID}/ses-{SS}/anat/sub-{ID}_ses-{SS}_ce-T1w.nii.gz
     T2      → sub-{ID}/ses-{SS}/anat/sub-{ID}_ses-{SS}_T2w.nii.gz
     FLAIR   → sub-{ID}/ses-{SS}/anat/sub-{ID}_ses-{SS}_FLAIR.nii.gz
-    BraTS_tumor_seg → derivatives/ground-truth/.../sub-{ID}_ses-{SS}_dseg.nii.gz
+    BraTS_tumor_seg → derivatives/ground-truth/.../sub-{ID}_ses-{SS}_desc-tumorOld_dseg.nii.gz
 
 Usage:
     python scripts/convert_ucsd_ptgbm_to_bids.py \\
@@ -37,7 +37,7 @@ MODALITY_MAP: Dict[str, str] = {
 }
 
 SEGMENTATION_MAP: Dict[str, str] = {
-    "BraTS_tumor_seg":                  "dseg",
+    "BraTS_tumor_seg":                  "desc-tumorOld_dseg",
     "enhancing_cellular_tumor_seg":     "label-enhancingcellular_mask",
     "non_enhancing_cellular_tumor_seg": "label-nonenhancingcellular_mask",
     "total_cellular_tumor_seg":         "label-totalcellular_mask",
