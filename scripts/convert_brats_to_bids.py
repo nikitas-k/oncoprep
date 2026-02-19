@@ -2,7 +2,7 @@
 """Convert BraTS-style challenge datasets to BIDS layout.
 
 Supports all BraTS challenge datasets that share the naming convention:
-    {SubjectID}-t1c.nii.gz  →  sub-{ID}/anat/sub-{ID}_ce-T1w.nii.gz
+    {SubjectID}-t1c.nii.gz  →  sub-{ID}/anat/sub-{ID}_ce-gadolinium_T1w.nii.gz
     {SubjectID}-t1n.nii.gz  →  sub-{ID}/anat/sub-{ID}_T1w.nii.gz
     {SubjectID}-t2f.nii.gz  →  sub-{ID}/anat/sub-{ID}_FLAIR.nii.gz
     {SubjectID}-t2w.nii.gz  →  sub-{ID}/anat/sub-{ID}_T2w.nii.gz
@@ -67,7 +67,7 @@ from typing import List, Optional, Tuple
 
 # BraTS modality → BIDS suffix mapping
 MODALITY_MAP = {
-    "t1c": "ce-T1w",      # contrast-enhanced T1
+    "t1c": "ce-gadolinium_T1w",      # contrast-enhanced T1
     "t1n": "T1w",          # native T1
     "t2f": "FLAIR",        # T2 FLAIR
     "t2w": "T2w",          # T2 weighted

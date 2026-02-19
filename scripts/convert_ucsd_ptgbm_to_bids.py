@@ -7,7 +7,7 @@ Source layout:
 
 BIDS mapping:
     T1pre   → sub-{ID}/ses-{SS}/anat/sub-{ID}_ses-{SS}_T1w.nii.gz
-    T1post  → sub-{ID}/ses-{SS}/anat/sub-{ID}_ses-{SS}_ce-T1w.nii.gz
+    T1post  → sub-{ID}/ses-{SS}/anat/sub-{ID}_ses-{SS}_ce-gadolinium_T1w.nii.gz
     T2      → sub-{ID}/ses-{SS}/anat/sub-{ID}_ses-{SS}_T2w.nii.gz
     FLAIR   → sub-{ID}/ses-{SS}/anat/sub-{ID}_ses-{SS}_FLAIR.nii.gz
     BraTS_tumor_seg → derivatives/ground-truth/.../sub-{ID}_ses-{SS}_desc-tumorOld_dseg.nii.gz
@@ -30,7 +30,7 @@ from typing import Dict, List
 
 MODALITY_MAP: Dict[str, str] = {
     "T1pre":  "T1w",
-    "T1post": "ce-T1w",
+    "T1post": "ce-gadolinium_T1w",
     "T2":     "T2w",
     "FLAIR":  "FLAIR",
     "SWAN":   "T2starw",

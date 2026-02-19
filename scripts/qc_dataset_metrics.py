@@ -44,42 +44,42 @@ DATASET_SPECS: Dict[str, Dict[str, Any]] = {
     "brats_gli": {
         "display": "BraTS-GLI-2024",
         "subdir": "BraTS-GLI-2024",
-        "modality_suffixes": {"t1c": "ce-T1w", "t1n": "T1w", "t2f": "FLAIR", "t2w": "T2w"},
+        "modality_suffixes": {"t1c": "ce-gadolinium_T1w", "t1n": "T1w", "t2f": "FLAIR", "t2w": "T2w"},
         "seg_suffix": "seg",
         "layout": "brats",  # {ID}/{ID}-{suffix}.nii.gz
     },
     "brats_men": {
         "display": "BraTS-MEN-2024",
         "subdir": "BraTS-MEN-2024",
-        "modality_suffixes": {"t1c": "ce-T1w", "t1n": "T1w", "t2f": "FLAIR", "t2w": "T2w"},
+        "modality_suffixes": {"t1c": "ce-gadolinium_T1w", "t1n": "T1w", "t2f": "FLAIR", "t2w": "T2w"},
         "seg_suffix": "seg",
         "layout": "brats",
     },
     "brats_met": {
         "display": "BraTS-MET-2024",
         "subdir": "BraTS-MET-2024",
-        "modality_suffixes": {"t1c": "ce-T1w", "t1n": "T1w", "t2f": "FLAIR", "t2w": "T2w"},
+        "modality_suffixes": {"t1c": "ce-gadolinium_T1w", "t1n": "T1w", "t2f": "FLAIR", "t2w": "T2w"},
         "seg_suffix": "seg",
         "layout": "brats",
     },
     "ucsf_pdgm": {
         "display": "UCSF-PDGM-v3",
         "subdir": "UCSF-PDGM-v3-20230111",  # outer download folder
-        "modality_suffixes": {"T1": "T1w", "T1c": "ce-T1w", "T2": "T2w", "FLAIR": "FLAIR"},
+        "modality_suffixes": {"T1": "T1w", "T1c": "ce-gadolinium_T1w", "T2": "T2w", "FLAIR": "FLAIR"},
         "seg_suffix": "tumor_segmentation",
         "layout": "ucsf",  # nested: outer/UCSF-PDGM-v3/{ID}/{ID}_{suffix}.nii.gz
     },
     "upenn_gbm": {
         "display": "UPENN-GBM",
         "subdir": "UPENN-GBM",
-        "modality_suffixes": {"T1": "T1w", "T1GD": "ce-T1w", "T2": "T2w", "FLAIR": "FLAIR"},
+        "modality_suffixes": {"T1": "T1w", "T1GD": "ce-gadolinium_T1w", "T2": "T2w", "FLAIR": "FLAIR"},
         "seg_suffix": None,  # separate dirs: automated_segm / images_segm
         "layout": "upenn",
     },
     "ucsd_ptgbm": {
         "display": "PKG-UCSD-PTGBM-v1",
         "subdir": "PKG - UCSD-PTGBM-v1",
-        "modality_suffixes": {"T1pre": "T1w", "T1post": "ce-T1w", "T2": "T2w", "FLAIR": "FLAIR"},
+        "modality_suffixes": {"T1pre": "T1w", "T1post": "ce-gadolinium_T1w", "T2": "T2w", "FLAIR": "FLAIR"},
         "seg_suffix": "BraTS_tumor_seg",
         "layout": "ucsd",  # UCSD-PTGBM/{ID}/{ID}_{suffix}.nii.gz
     },
@@ -101,28 +101,28 @@ DATASET_SPECS: Dict[str, Dict[str, Any]] = {
     "brats_ssa": {
         "display": "BraTS-SSA-2023",
         "subdir": "ASNR-MICCAI-BraTS2023-SSA-Challenge-TrainingData_V2",
-        "modality_suffixes": {"t1c": "ce-T1w", "t1n": "T1w", "t2f": "FLAIR", "t2w": "T2w"},
+        "modality_suffixes": {"t1c": "ce-gadolinium_T1w", "t1n": "T1w", "t2f": "FLAIR", "t2w": "T2w"},
         "seg_suffix": "seg",
         "layout": "brats",
     },
     "brats_gli_pre": {
         "display": "BraTS2025-GLI-PRE",
         "subdir": "BraTS2025-GLI-PRE-Challenge-TrainingData",
-        "modality_suffixes": {"t1c": "ce-T1w", "t1n": "T1w", "t2f": "FLAIR", "t2w": "T2w"},
+        "modality_suffixes": {"t1c": "ce-gadolinium_T1w", "t1n": "T1w", "t2f": "FLAIR", "t2w": "T2w"},
         "seg_suffix": "seg",
         "layout": "brats",
     },
     "brats_met_2025": {
         "display": "BraTS2025-MET",
         "subdir": "MICCAI-LH-BraTS2025-MET-Challenge-Training",
-        "modality_suffixes": {"t1c": "ce-T1w", "t1n": "T1w", "t2f": "FLAIR", "t2w": "T2w"},
+        "modality_suffixes": {"t1c": "ce-gadolinium_T1w", "t1n": "T1w", "t2f": "FLAIR", "t2w": "T2w"},
         "seg_suffix": "seg",
         "layout": "brats",
     },
     "brats_goat": {
         "display": "BraTS-GoAT-2024",
         "subdir": "MICCAI2024-BraTS-GoAT-TrainingData-With-GroundTruth",
-        "modality_suffixes": {"t1c": "ce-T1w", "t1n": "T1w", "t2f": "FLAIR", "t2w": "T2w"},
+        "modality_suffixes": {"t1c": "ce-gadolinium_T1w", "t1n": "T1w", "t2f": "FLAIR", "t2w": "T2w"},
         "seg_suffix": "seg",
         "layout": "brats",
     },
@@ -137,7 +137,7 @@ DATASET_SPECS: Dict[str, Dict[str, Any]] = {
     "lumiere": {
         "display": "LUMIERE",
         "subdir": "LUMIERE",
-        "modality_suffixes": {"CT1": "ce-T1w", "T1": "T1w", "T2": "T2w", "FLAIR": "FLAIR"},
+        "modality_suffixes": {"CT1": "ce-gadolinium_T1w", "T1": "T1w", "T2": "T2w", "FLAIR": "FLAIR"},
         "seg_suffix": None,  # Multiple seg sources in subdirs
         "layout": "lumiere",  # Custom: Imaging/Patient-NNN/week-NNN/
     },
@@ -464,7 +464,7 @@ def _run_dicom_dataset_qc(
                     roi_count += 1
                     series_types["ROI/Mask"] += 1
                 elif re.search(r"T1.*(?:POST|GAD)", sr_name, re.IGNORECASE):
-                    series_types["ce-T1w"] += 1
+                    series_types["ce-gadolinium_T1w"] += 1
                 elif re.search(r"T1.*(?:PRE|SE)\b", sr_name, re.IGNORECASE):
                     series_types["T1w"] += 1
                 elif re.search(r"FLAIR", sr_name, re.IGNORECASE):

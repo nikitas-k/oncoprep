@@ -21,7 +21,7 @@ Source layout:
 
 Output layout (BIDS):
     sub-{NNN}/ses-week{NNN}{rep}/anat/
-        sub-{NNN}_ses-week{NNN}{rep}_ce-T1w.nii.gz
+        sub-{NNN}_ses-week{NNN}{rep}_ce-gadolinium_T1w.nii.gz
         sub-{NNN}_ses-week{NNN}{rep}_T1w.nii.gz
         sub-{NNN}_ses-week{NNN}{rep}_T2w.nii.gz
         sub-{NNN}_ses-week{NNN}{rep}_FLAIR.nii.gz
@@ -48,7 +48,7 @@ from typing import List, Optional, Tuple
 
 # Source filename → BIDS suffix mapping
 MODALITY_MAP = {
-    "CT1.nii.gz": "ce-T1w",       # contrast-enhanced T1
+    "CT1.nii.gz": "ce-gadolinium_T1w",       # contrast-enhanced T1
     "T1.nii.gz": "T1w",           # native T1
     "T2.nii.gz": "T2w",           # T2 weighted
     "FLAIR.nii.gz": "FLAIR",      # FLAIR

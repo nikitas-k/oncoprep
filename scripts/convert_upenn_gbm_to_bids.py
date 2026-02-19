@@ -8,7 +8,7 @@ Source layout:
 
 BIDS mapping:
     T1.nii.gz    → sub-{ID}/anat/sub-{ID}_T1w.nii.gz
-    T1GD.nii.gz  → sub-{ID}/anat/sub-{ID}_ce-T1w.nii.gz
+    T1GD.nii.gz  → sub-{ID}/anat/sub-{ID}_ce-gadolinium_T1w.nii.gz
     T2.nii.gz    → sub-{ID}/anat/sub-{ID}_T2w.nii.gz
     FLAIR.nii.gz → sub-{ID}/anat/sub-{ID}_FLAIR.nii.gz
     *_segm       → derivatives/ground-truth/.../sub-{ID}_desc-tumorOld_dseg.nii.gz
@@ -32,7 +32,7 @@ from typing import Dict, List, Optional
 
 MODALITY_MAP: Dict[str, str] = {
     "T1":    "T1w",
-    "T1GD":  "ce-T1w",
+    "T1GD":  "ce-gadolinium_T1w",
     "T2":    "T2w",
     "FLAIR": "FLAIR",
 }

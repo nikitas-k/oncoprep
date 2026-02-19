@@ -18,7 +18,7 @@ Source layout:
 Output layout (BIDS):
     sub-{ID}/ses-{date}/anat/
         sub-{ID}_ses-{date}_T1w.nii.gz
-        sub-{ID}_ses-{date}_ce-T1w.nii.gz
+        sub-{ID}_ses-{date}_ce-gadolinium_T1w.nii.gz
         ...
     derivatives/ground-truth/sub-{ID}/ses-{date}/anat/
         sub-{ID}_ses-{date}_label-GTV_mask.nii.gz
@@ -57,7 +57,7 @@ except ImportError:
 
 # Series description → BIDS suffix classification (case-insensitive regex)
 SERIES_RULES: List[Tuple[str, str]] = [
-    (r"t1.*post|post.*t1|t1c|t1.*gad|mprage.*post|spgr.*post|bravo.*post", "ce-T1w"),
+    (r"t1.*post|post.*t1|t1c|t1.*gad|mprage.*post|spgr.*post|bravo.*post", "ce-gadolinium_T1w"),
     (r"t1|mprage|spgr|bravo|fspgr|ir-fspgr", "T1w"),
     (r"flair|t2.*flair|flair.*t2", "FLAIR"),
     (r"t2|t2w|t2\s", "T2w"),
@@ -351,7 +351,7 @@ def main() -> None:
             converted = convert_mr_series(session_dir, anat_dir, sub_str, ses_str)
 
             # Convert RTSTRUCT → ROI metadata
-            ref = converted.get("ce-T1w") or converted.get("T1w")
+            ref = converted.get("ce-gadolinium_T1w") or converted.get("T1w")
             rois = convert_rtstruct(session_dir, deriv_anat_dir, sub_str, ses_str, ref)
             total_rois += len(rois)
 

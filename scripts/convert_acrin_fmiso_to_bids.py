@@ -6,7 +6,7 @@ Source layout (TCIA):
         1-01.dcm, 1-02.dcm, ...
 
 BIDS output:
-    sub-{NNN}/ses-{MM}/anat/  (T1w, ce-T1w, T2w, FLAIR)
+    sub-{NNN}/ses-{MM}/anat/  (T1w, ce-gadolinium_T1w, T2w, FLAIR)
     sub-{NNN}/ses-{MM}/dwi/   (DWI)
     sub-{NNN}/ses-{MM}/perf/  (DSC, DCE)
     sub-{NNN}/ses-{MM}/pet/   (FMISO PET)
@@ -41,8 +41,8 @@ SERIES_RULES: List[Tuple[str, str, str]] = [
     (r"TUMOR.?PERFUSION", "__roi__", "TumorPerfusion"),
     # Structural
     (r"T1.*(PRE|SE)\b(?!.*GAD)(?!.*POST)", "anat", "T1w"),
-    (r"T1.*(POST|GAD)", "anat", "ce-T1w"),
-    (r"MPRAGE.*POST", "anat", "ce-T1w"),
+    (r"T1.*(POST|GAD)", "anat", "ce-gadolinium_T1w"),
+    (r"MPRAGE.*POST", "anat", "ce-gadolinium_T1w"),
     (r"FLAIR", "anat", "FLAIR"),
     (r"T2(?!.*STAR)", "anat", "T2w"),
     # Diffusion

@@ -6,7 +6,7 @@ Source layout (TCIA):
         1-01.dcm, 1-02.dcm, ...
 
 BIDS output:
-    sub-{NNN}/ses-{MM}/anat/  (T1w, ce-T1w, T2w, FLAIR)
+    sub-{NNN}/ses-{MM}/anat/  (T1w, ce-gadolinium_T1w, T2w, FLAIR)
     sub-{NNN}/ses-{MM}/dwi/   (DWI, DTI)
     sub-{NNN}/ses-{MM}/perf/  (DSC, DCE)
 
@@ -35,7 +35,7 @@ SERIES_RULES: List[Tuple[str, str, str]] = [
     (r"\broi\b|ROICBV|tumor", "__roi__", "roi"),
     # Structural
     (r"T1.*(?:pre|SE)\b(?!.*GAD)(?!.*POST)(?!.*FLAIR)", "anat", "T1w"),
-    (r"T1.*(?:post|GAD)|POST.?GAD.*T1|SPGR.*GAD|IRSPGR", "anat", "ce-T1w"),
+    (r"T1.*(?:post|GAD)|POST.?GAD.*T1|SPGR.*GAD|IRSPGR", "anat", "ce-gadolinium_T1w"),
     (r"FLAIR", "anat", "FLAIR"),
     (r"T2(?!.*STAR)(?!.*GRE)(?!.*FLAIR)", "anat", "T2w"),
     (r"T2.*(?:STAR|GRE)|SUSCEPT", "anat", "T2starw"),

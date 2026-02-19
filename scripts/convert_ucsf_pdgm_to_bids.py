@@ -6,7 +6,7 @@ Source layout:
 
 BIDS mapping (structural → rawdata, segs → derivatives/ground-truth):
     T1.nii.gz           → sub-{ID}/anat/sub-{ID}_T1w.nii.gz
-    T1c.nii.gz          → sub-{ID}/anat/sub-{ID}_ce-T1w.nii.gz
+    T1c.nii.gz          → sub-{ID}/anat/sub-{ID}_ce-gadolinium_T1w.nii.gz
     T2.nii.gz           → sub-{ID}/anat/sub-{ID}_T2w.nii.gz
     FLAIR.nii.gz        → sub-{ID}/anat/sub-{ID}_FLAIR.nii.gz
     SWI.nii.gz          → sub-{ID}/anat/sub-{ID}_T2starw.nii.gz
@@ -32,7 +32,7 @@ from typing import Dict, List, Optional
 # Only map the modalities OncoPrep can use + segmentations
 MODALITY_MAP: Dict[str, str] = {
     "T1":    "T1w",
-    "T1c":   "ce-T1w",
+    "T1c":   "ce-gadolinium_T1w",
     "T2":    "T2w",
     "FLAIR": "FLAIR",
     "SWI":   "T2starw",
