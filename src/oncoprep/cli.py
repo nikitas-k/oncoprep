@@ -30,7 +30,24 @@ def _log_nodes_cb(node, status):
     import json as _json
     import logging as _logging
 
-    runtime = node.result.runtime
+    try:
+        runtime = node.result.runtime
+    except (FileNotFoundError, AttributeError, Exception):
+        # Node failed or has no result file — log what we can and return
+        status_dict = {
+            'name': node.name,
+            'id': node._id,
+            'start': None,
+            'finish': None,
+            'duration': None,
+            'runtime_threads': 'N/A',
+            'runtime_memory_gb': 'N/A',
+            'estimated_memory_gb': node.mem_gb,
+            'num_threads': node.n_procs,
+            'error': True,
+        }
+        _logging.getLogger('callback').debug(_json.dumps(status_dict))
+        return
 
     # MapNode results have a list of per-sub-node runtimes
     if isinstance(runtime, list):

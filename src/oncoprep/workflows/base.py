@@ -613,7 +613,7 @@ to workflows in *OncoPrep*'s documentation]\
             workflow.connect([
                 (bidssrc, anat_seg_wf, [
                     (('t1w', fix_multi_T1w_source_name), 'inputnode.source_file'),
-                    (('t1w', fix_multi_T1w_source_name), 'inputnode.t1w'),
+                    (('t1w', _pick_first), 'inputnode.t1w'),
                     (('t1ce', _pick_first), 'inputnode.t1ce'),
                     (('t2w', _pick_first), 'inputnode.t2w'),
                 ]),
