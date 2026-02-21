@@ -662,6 +662,7 @@ def _apply_transform_if_exists(input_image, reference_image, transforms, backend
         return None
 
     import subprocess
+    from pathlib import Path
 
     input_path = Path(input_image)
     output_path = Path.cwd() / f'{input_path.stem.replace(".nii", "")}_std.nii.gz'
