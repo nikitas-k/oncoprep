@@ -34,7 +34,8 @@ dependencies = [
   "psutil>=5.4",
   "torch",
   "torchvision",
-  "torchaudio"
+  "torchaudio",
+  "huggingface_hub"
 ]
 
 [project.optional-dependencies]
