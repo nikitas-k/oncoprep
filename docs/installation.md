@@ -33,8 +33,9 @@ pip install "oncoprep[radiomics]"
 pip install "oncoprep[vasari]"
 ```
 
-Requires `vasari-auto` from GitHub (no PyPI package). The extra installs
-directly from `git+https://github.com/nikitas-k/vasari-auto.git`.
+Installs [`vasari-auto`](https://pypi.org/project/vasari-auto/) — a fork of
+the [original VASARI-auto](https://github.com/jamesruffle/vasari-auto) by
+Ruffle et al. (2024), maintained for OncoPrep integration.
 
 ### HD-BET skull stripping
 

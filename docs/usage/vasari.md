@@ -268,16 +268,13 @@ VASARI feature extraction requires the `vasari-auto` package:
 pip install "oncoprep[vasari]"
 ```
 
-Or install directly:
-
-```bash
-pip install "vasari-auto @ git+https://github.com/nikitas-k/vasari-auto.git"
-```
-
-`vasari-auto` ships its own atlas masks and resolves them from package data
-(no CWD dependency).  It depends on `antspyx`, `nibabel`, `scipy`,
-`scikit-image`, `pandas`, and `seaborn`.  When OncoPrep resamples the
-segmentation to template space (via the deferred registration block),
+`vasari-auto` is a fork of the
+[original by Ruffle et al. (2024)](https://doi.org/10.1016/j.nicl.2024.103668),
+available on [PyPI](https://pypi.org/project/vasari-auto/).  It ships its own
+atlas masks and resolves them from package data (no CWD dependency).  It
+depends on `antspyx`, `nibabel`, `scipy`, `scikit-image`, `pandas`, and
+`seaborn`.  When OncoPrep resamples the segmentation to template space
+(via the deferred registration block),
 the `antspyx` ANTs SyN registration step
 inside vasari-auto is bypassed entirely.
 

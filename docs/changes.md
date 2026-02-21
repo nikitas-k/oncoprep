@@ -32,6 +32,19 @@
   describe D3.
 - `run_all.py` now passes `comparator_dir` through to Phase D.
 
+### Packaging
+
+- **`vasari-auto` is now on PyPI** (`vasari-auto>=0.1.0`).  The `[vasari]`
+  optional dependency now installs from PyPI instead of requiring a direct
+  git URL.  `vasari-auto` is a fork of the
+  [original by Ruffle et al. (2024)](https://doi.org/10.1016/j.nicl.2024.103668),
+  maintained for OncoPrep integration.
+- **`pyradiomics` dependency switched from git URL to PyPI** release
+  (`pyradiomics>=3.0`), fixing PyPI upload rejection for direct references.
+- Fixed `_pop()` in `workflows/outputs.py` — now handles plain strings
+  (not just lists), preventing a `TraitError` when `CopyXForm` flattens
+  single-element lists in the N4/ATROPOS sub-workflow.
+
 ### Bug Fixes
 
 - Fixed `test_nninteractive::test_workflow_graph_is_connected` — updated

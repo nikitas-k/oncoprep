@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "oncoprep"
-version = "0.2.3"
+version = "0.2.4"
 description = "A toolbox for analysing neuro-oncology MRI"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -44,11 +44,11 @@ hd-bet = [
     "hd-bet",
 ]
 radiomics = [
-    "pyradiomics @ git+https://github.com/AIM-Harvard/pyradiomics.git",
+    "pyradiomics>=3.0",
     "neuroCombat>=0.2.12",
 ]
 vasari = [
-    "vasari-auto @ git+https://github.com/nikitas-k/vasari-auto.git",
+    "vasari-auto>=0.1.0",
 ]
 mriqc = [
     "mriqc>=24.0",
