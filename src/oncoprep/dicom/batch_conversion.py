@@ -21,19 +21,19 @@ LOGGER = get_logger(__name__)
 def convert_subject_wrapper(args: Tuple[Path, Path, str, str | None, str]) -> Tuple[str, bool]:
     """
     Wrapper for multiprocessing pool.
-    
+
     Parameters
     ----------
     args : Tuple
         (source_dir, bids_dir, subject, session, converter)
-        
+
     Returns
     -------
     Tuple[str, bool]
         Subject identifier and success status
     """
     source_dir, bids_dir, subject, session, converter = args
-    
+
     try:
         success = convert_subject_dicoms_to_bids(
             source_dir=source_dir,
@@ -58,7 +58,7 @@ def batch_convert(
 ) -> dict:
     """
     Batch convert DICOM subjects to BIDS format.
-    
+
     Parameters
     ----------
     dicom_root : Path
@@ -73,7 +73,7 @@ def batch_convert(
         Number of parallel processes
     pattern : Optional[str]
         Pattern to match subject directories (e.g., 'sub-*' or 'GBM*')
-        
+
     Returns
     -------
     dict
@@ -84,24 +84,24 @@ def batch_convert(
         subject_dirs = list(dicom_root.glob(pattern))
     else:
         subject_dirs = [d for d in dicom_root.iterdir() if d.is_dir() and not d.name.startswith('.')]
-    
+
     if not subject_dirs:
         LOGGER.error(f"No subject directories found in {dicom_root}")
         return {}
-    
+
     LOGGER.info(f"Found {len(subject_dirs)} subject directories")
-    
+
     # Create BIDS dataset description
     create_bids_dataset_description(bids_dir)
-    
+
     # Prepare conversion tasks
     tasks = []
     for subject_dir in sorted(subject_dirs):
         subject_id = subject_dir.name.replace('sub-', '').split('_')[0]
         tasks.append((subject_dir, bids_dir, subject_id, session, converter))
-    
+
     results = {'total': len(tasks), 'successful': 0, 'failed': 0, 'subjects': {}}
-    
+
     # Run conversions
     if n_procs == 1:
         LOGGER.info("Running conversions serially")
@@ -121,7 +121,7 @@ def batch_convert(
                     results['successful'] += 1
                 else:
                     results['failed'] += 1
-    
+
     # Summary
     LOGGER.info(f"\n{'=' * 70}")
     LOGGER.info("Batch Conversion Summary")
@@ -132,7 +132,7 @@ def batch_convert(
     LOGGER.info(f"Success rate: {100 * results['successful'] / results['total']:.1f}%")
     LOGGER.info(f"Output directory: {bids_dir}")
     LOGGER.info(f"{'=' * 70}\n")
-    
+
     return results
 
 
@@ -142,7 +142,7 @@ def batch_conversion_main():
         description='Batch convert DICOM subjects to BIDS format',
         formatter_class=RawTextHelpFormatter,
     )
-    
+
     parser.add_argument(
         'dicom_root',
         type=Path,
@@ -153,7 +153,7 @@ def batch_conversion_main():
         type=Path,
         help='output BIDS dataset directory',
     )
-    
+
     parser.add_argument(
         '--session',
         default=None,
@@ -189,9 +189,9 @@ def batch_conversion_main():
         action='store_true',
         help='show version and exit',
     )
-    
+
     opts = parser.parse_args()
-    
+
     if opts.version:
         try:
             import oncoprep
@@ -199,11 +199,11 @@ def batch_conversion_main():
         except (ImportError, AttributeError):
             print("oncoprep 0.1.0")
         return 0
-    
+
     # Set logging level
     log_level = int(max(25 - 5 * opts.verbose_count, logging.DEBUG))
     logging.basicConfig(level=log_level, format='%(levelname)s: %(message)s')
-    
+
     # Run batch conversion
     try:
         results = batch_convert(
@@ -214,12 +214,12 @@ def batch_conversion_main():
             n_procs=opts.nprocs,
             pattern=opts.pattern,
         )
-        
+
         if results['failed'] == 0:
             return 0
         else:
             return 1
-            
+
     except Exception as e:
         LOGGER.error(f"Batch conversion failed: {e}", exc_info=True)
         return 1

@@ -86,7 +86,7 @@ def init_report_wf(
     inputnode.inputs.report_dict = None
     inputnode.inputs.bids_metadata = None
     inputnode.inputs.conversion_dict = None
-    
+
     outputnode = pe.Node(
         niu.IdentityInterface(fields=['report_file']),
         name='outputnode',
@@ -264,7 +264,10 @@ def _render_html_report(metrics_dict, subject_label, session_label, output_dir):
         <title>OncoPrep Report - sub-{{ subject_label }}</title>
         <style>
             body { font-family: Arial, sans-serif; margin: 20px; background-color: #f5f5f5; }
-            .container { max-width: 1000px; margin: 0 auto; background-color: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+            .container { max-width: 1000px; margin: 0 auto;
+                background-color: white; padding: 30px;
+                border-radius: 8px;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
             h1 { color: #333; border-bottom: 3px solid #0066cc; padding-bottom: 10px; }
             h2 { color: #0066cc; margin-top: 30px; padding-bottom: 10px; border-bottom: 1px solid #ddd; }
             .metrics-table { border-collapse: collapse; width: 100%; margin: 20px 0; }
@@ -278,7 +281,9 @@ def _render_html_report(metrics_dict, subject_label, session_label, output_dir):
             .warning { background-color: #fff3cd; padding: 10px; border-radius: 5px; color: #856404; }
             .success { background-color: #d4edda; padding: 10px; border-radius: 5px; color: #155724; }
             .error { background-color: #f8d7da; padding: 10px; border-radius: 5px; color: #721c24; }
-            .status-badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-weight: bold; font-size: 12px; }
+            .status-badge { display: inline-block;
+                padding: 4px 12px; border-radius: 20px;
+                font-weight: bold; font-size: 12px; }
             .status-success { background-color: #d4edda; color: #155724; }
             .status-pending { background-color: #fff3cd; color: #856404; }
             .status-error { background-color: #f8d7da; color: #721c24; }
@@ -292,7 +297,11 @@ def _render_html_report(metrics_dict, subject_label, session_label, output_dir):
     <body>
         <div class="container">
             <h1>OncoPrep Preprocessing Report</h1>
-            <p><strong>Subject:</strong> sub-{{ subject_label }}{% if session_label %}<br><strong>Session:</strong> {{ session_label }}{% endif %}</p>
+            <p><strong>Subject:</strong>
+            sub-{{ subject_label }}
+            {% if session_label %}<br>
+            <strong>Session:</strong>
+            {{ session_label }}{% endif %}</p>
 
             {% if dicom_count or subject_count %}
             <div class="section conversion-section">
@@ -354,7 +363,11 @@ def _render_html_report(metrics_dict, subject_label, session_label, output_dir):
                     </tr>
                     <tr>
                         <td class="metric-label">Voxel Size (mm):</td>
-                        <td class="metric-value">{{ "%.2f" | format(voxel_size[0]) }} × {{ "%.2f" | format(voxel_size[1]) }} × {{ "%.2f" | format(voxel_size[2]) }}</td>
+                        <td class="metric-value">
+                            {{ "%.2f" | format(voxel_size[0]) }} ×
+                            {{ "%.2f" | format(voxel_size[1]) }} ×
+                            {{ "%.2f" | format(voxel_size[2]) }}
+                        </td>
                     </tr>
                     <tr>
                         <td class="metric-label">Brain Volume (mm³):</td>

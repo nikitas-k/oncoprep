@@ -351,7 +351,7 @@ class TestAnomalyDetection:
         )
 
         # Monkey-patch to intercept seed detection BEFORE model inference
-        _orig_resolve = iface._resolve_model_dir
+        _orig_resolve = iface._resolve_model_dir  # noqa: F841
 
         def _fake_resolve():
             raise _SeedsCaptured()

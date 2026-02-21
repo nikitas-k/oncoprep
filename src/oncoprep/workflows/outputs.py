@@ -182,7 +182,7 @@ def init_anat_reports_wf(*, spaces, freesurfer, output_dir, sloppy=False, name='
             name='t2w_std',
         )
 
-        flair_std = pe.Node(    
+        flair_std = pe.Node(
             ApplyTransforms(
                 dimension=3,
                 default_value=0,
@@ -224,9 +224,9 @@ def init_anat_reports_wf(*, spaces, freesurfer, output_dir, sloppy=False, name='
 
         ds_std_t1ce_report = pe.Node(
             DerivativesDataSink(
-                base_directory=output_dir, 
-                suffix='T1w', 
-                allowed_entities=('acq',), 
+                base_directory=output_dir,
+                suffix='T1w',
+                allowed_entities=('acq',),
                 datatype='figures'
             ),
             name='ds_std_t1ce_report',
@@ -411,7 +411,7 @@ def init_ds_template_wf(
         ),
         name='inputnode',
     )
-    
+
     outputnode = pe.Node(niu.IdentityInterface(fields=['anat_preproc']), name='outputnode')
 
     ds_anat_preproc = pe.Node(
@@ -424,7 +424,7 @@ def init_ds_template_wf(
     # fmt:off
     workflow.connect([
         (inputnode, ds_anat_preproc, [('anat_preproc', 'in_file'),
-                                     ('source_file', 'source_file')]),
+                                      ('source_file', 'source_file')]),
         (ds_anat_preproc, outputnode, [('out_file', 'anat_preproc')]),
     ])
     # fmt:on
@@ -464,7 +464,7 @@ def init_ds_modalities_wf(
     """
     Save native-space preprocessed modalities (T1w, T1ce, T2w, FLAIR).
 
-    All images are skull-stripped. Uses conditional saving - only saves 
+    All images are skull-stripped. Uses conditional saving - only saves
     modalities that exist (not None).
 
     Parameters
@@ -506,11 +506,11 @@ def init_ds_modalities_wf(
     )
 
     def _ds_if_exists_native(in_file, base_directory, source_file, suffix, desc='preproc',
-                              skull_stripped=False, resolution='native', acquisition=None):
+                             skull_stripped=False, resolution='native', acquisition=None):
         """Save native-space file only if it exists (not None/Undefined/empty).
-        
+
         Creates BIDS-compliant derivative with JSON sidecar containing metadata.
-        
+
         Parameters
         ----------
         in_file : str
@@ -529,7 +529,7 @@ def init_ds_modalities_wf(
             Resolution description (default: 'native')
         acquisition : str or None
             Acquisition entity value (e.g., 'ce' for contrast-enhanced)
-            
+
         Returns
         -------
         str or None
@@ -545,7 +545,7 @@ def init_ds_modalities_wf(
             return None
         if isinstance(in_file, str) and in_file == '':
             return None
-            
+
         from oncoprep.interfaces import DerivativesDataSink
         ds = DerivativesDataSink(
             base_directory=base_directory,
@@ -799,7 +799,7 @@ def init_ds_dseg_wf(
     # fmt:off
     workflow.connect([
         (inputnode, ds_anat_dseg, [('anat_dseg', 'in_file'),
-                                  ('source_files', 'source_file')]),
+                                   ('source_files', 'source_file')]),
         (ds_anat_dseg, outputnode, [('out_file', 'anat_dseg')]),
     ])
     # fmt:on
@@ -867,7 +867,7 @@ def init_ds_tpms_wf(
     # fmt:off
     workflow.connect([
         (inputnode, ds_anat_tpms, [('anat_tpms', 'in_file'),
-                                  ('source_files', 'source_file')]),
+                                   ('source_files', 'source_file')]),
         (ds_anat_tpms, outputnode, [('out_file', 'anat_tpms')]),
     ])
     # fmt:on
@@ -1872,6 +1872,3 @@ def _read_json(in_file):
 
 def _pop(in_list):
     return in_list[0]
-
-
-

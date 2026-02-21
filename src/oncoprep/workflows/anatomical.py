@@ -21,7 +21,7 @@
 # about our expectations at
 #
 #     https://www.nipreps.org/community/licensing/
-# 
+#
 # CHANGES FROM SMRIPREP v2.5.3 (by OncoPrep developers):
 # - Adapted for OncoPrep and BraTS data
 # - Unimplemented FreeSurfer surface reconstruction steps for simplicity
@@ -217,7 +217,7 @@ def init_anat_preproc_wf(
                 'template',
                 'subjects_dir',
                 'subject_id',
-                #'t1w_defaced',
+                # 't1w_defaced',
                 't1w_preproc',
                 't1w_brain',
                 't1w_mask',
@@ -225,15 +225,15 @@ def init_anat_preproc_wf(
                 't1w_tpms',
                 'anat2std_xfm',
                 'std2anat_xfm',
-                #'t1ce_defaced',
+                # 't1ce_defaced',
                 't1ce_preproc',
-                #'t1ce_tpms',
-                #'t2w_defaced',
+                # 't1ce_tpms',
+                # 't2w_defaced',
                 't2w_preproc',
-                #'t2w_tpms',
-                #'flair_defaced',
+                # 't2w_tpms',
+                # 'flair_defaced',
                 'flair_preproc',
-                #'flair_tpms',
+                # 'flair_tpms',
                 'tumor_dseg',
             ]
         ),
@@ -323,6 +323,7 @@ def init_anat_preproc_wf(
     workflow.__desc__ = anat_fit_wf.__desc__
     return workflow
     # TODO: add surface pipeline when tested
+
 
 @tag('anat.fit')
 def init_anat_fit_wf(
@@ -502,10 +503,10 @@ BIDS dataset.
 
     if t2w:
         desc += f"Additionally, {len(t2w)} T2-weighted (T2w) images "
-    
+
     if flair:
         desc += f"and {len(flair)} FLAIR images were available.\n"
-    
+
     have_t1w = 't1w_preproc' in precomputed
     have_t2w = 't2w_preproc' in precomputed
     have_t1ce = 't1ce_preproc' in precomputed
@@ -616,14 +617,14 @@ BIDS dataset.
         sloppy=sloppy,
         freesurfer=False,
     )
-    
+
     # Extract first source file from list for reports
     def _get_first_file(files):
         """Get the first file from a list."""
         if isinstance(files, list):
             return files[0] if files else None
         return files
-    
+
     source_file_select = pe.Node(
         niu.Function(
             function=_get_first_file,
@@ -633,7 +634,7 @@ BIDS dataset.
         name='source_file_select',
         run_without_submitting=True,
     )
-    
+
     workflow.connect([
         (seg_buffer, outputnode, [
             ('t1w_dseg', 't1w_dseg'),
@@ -682,7 +683,7 @@ BIDS dataset.
         ants_ver = ANTsInfo.version()
         LOGGER.info(f'Detected ANTs version: {ants_ver}')
         desc += f"""\
- {'Each' if num_t1w > 1 else 'The'} T1-weighted (T1w) image was corrected for intensity 
+ {'Each' if num_t1w > 1 else 'The'} T1-weighted (T1w) image was corrected for intensity
 non-uniformity (INU) with `N4BiasFieldCorrection` [@n4], distributed with ANTs {ants_ver}
 [@ants, RRID:SCR_004757]"""
         desc += ".\n" if num_t1w > 1 else ', and used as T1w-reference throughtout the workflow.\n'
@@ -717,7 +718,8 @@ non-uniformity (INU) with `N4BiasFieldCorrection` [@n4], distributed with ANTs {
         ])
     else:
         LOGGER.info('ANAT Found preprocessed T1w - skipping stage 1')
-        desc += """\ A preprocessed T1-weighted (T1w) image was provided as a precomputed
+        desc += """\
+ A preprocessed T1-weighted (T1w) image was provided as a precomputed
         input and used as T1w-reference throughout the workflow.
         \n"""
 
@@ -753,7 +755,7 @@ non-uniformity (INU) with `N4BiasFieldCorrection` [@n4], distributed with ANTs {
                 )
             elif skull_strip_backend == 'synthstrip':
                 desc += """\
-    The T1w-reference was skull-stripped using SynthStrip [@synthstrip], 
+    The T1w-reference was skull-stripped using SynthStrip [@synthstrip],
     a robust, learning-based brain extraction tool from FreeSurfer.
     """
                 brain_extraction_wf = init_synthstrip_wf(
@@ -866,7 +868,7 @@ non-uniformity (INU) with `N4BiasFieldCorrection` [@n4], distributed with ANTs {
                 (anat_validate, t1w_buffer, [('out_file', 't1w_brain')]),
                 (binarize, t1w_buffer, [('out_file', 't1w_mask')]),
             ])
-    
+
         ds_t1w_mask_wf = init_ds_mask_wf(
             bids_dir=bids_dir,
             output_dir=output_dir,
@@ -880,7 +882,8 @@ non-uniformity (INU) with `N4BiasFieldCorrection` [@n4], distributed with ANTs {
         ])
     else:
         LOGGER.info('ANAT Found precomputed T1w mask - skipping brain extraction')
-        desc += """\ A precomputed brain mask was provided and used to derive the brain-extracted
+        desc += """\
+ A precomputed brain mask was provided and used to derive the brain-extracted
         T1w image throughout the workflow.
         \n"""
 
@@ -907,7 +910,7 @@ non-uniformity (INU) with `N4BiasFieldCorrection` [@n4], distributed with ANTs {
         else:
             LOGGER.info('ANAT Skipping Stage 2')
             workflow.connect([(apply_mask, t1w_buffer, [('out_file', 't1w_brain')])])
-        
+
         workflow.connect([refined_buffer, outputnode, [('t1w_mask', 't1w_mask')]])
 
     # Connect t1w_buffer results to refined_buffer for downstream processing (both branches)
@@ -934,7 +937,7 @@ brain-extracted T1w using `fast` [FSL {fsl_ver}; RRID:SCR_002823, @fsl_fast].
             mem_gb=3,
         )
         lut_t1w_dseg = pe.Node(niu.Function(function=_apply_bids_lut), name='lut_t1w_dseg')
-        lut_t1w_dseg.inputs.lut = (0, 3, 1, 2) # maps: 0 -> 0, 3 -> 1, 1 -> 2, 2 -> 3.
+        lut_t1w_dseg.inputs.lut = (0, 3, 1, 2)  # maps: 0 -> 0, 3 -> 1, 1 -> 2, 2 -> 3.
         fast2bids = pe.Node(
             niu.Function(function=_probseg_fast2bids),
             name='fast2bids',
@@ -975,10 +978,10 @@ brain-extracted T1w using `fast` [FSL {fsl_ver}; RRID:SCR_002823, @fsl_fast].
     # ========================================================
     # Additional modalities (T1ce, T2w, FLAIR) are processed as follows:
     # 1. Register to raw T1w reference (anat_validate output)
-    # 2. Apply T1w brain mask to skull-strip the registered modality  
+    # 2. Apply T1w brain mask to skull-strip the registered modality
     # 3. Run N4 INU correction on the skull-stripped image
     # 4. Standard-space warping is handled in outputs.py using anat2std_xfm
-    
+
     coreg_buffer = pe.Node(
         niu.IdentityInterface(fields=['t1ce_preproc', 't2w_preproc', 'flair_preproc']),
         name='coreg_buffer',
@@ -1162,7 +1165,7 @@ brain-extracted T1w using `fast` [FSL {fsl_ver}; RRID:SCR_002823, @fsl_fast].
     # Convert list to SpatialReferences if needed
     if output_spaces is not None and not isinstance(output_spaces, SpatialReferences):
         output_spaces = SpatialReferences(output_spaces)
-    
+
     for template in output_spaces.get_spaces(nonstandard=False, dim=(3,)):
         xfms = precomputed.get('transforms', {}).get(template, {})
         if set(xfms) != {'forward', 'reverse'}:
@@ -1202,7 +1205,7 @@ brain-extracted T1w using `fast` [FSL {fsl_ver}; RRID:SCR_002823, @fsl_fast].
             output_dir=output_dir,
             image_type='T1w',
         )
-        
+
         # Use JoinNodes to collect outputs from iterable registration workflow
         # join_template = pe.JoinNode(
         #     niu.IdentityInterface(fields=['template']),
@@ -1222,7 +1225,7 @@ brain-extracted T1w using `fast` [FSL {fsl_ver}; RRID:SCR_002823, @fsl_fast].
         #     joinfield=['std2anat_xfm'],
         #     name='join_std2anat',
         # )
-        
+
         workflow.connect([
             # Connect T1w brain to registration via barrier (ensures native save completes first)
             (wait_for_native_save, register_template_wf, [('t1w_brain', 'inputnode.t1w')]),
@@ -1390,11 +1393,11 @@ def _register_modality(moving, fixed, fixed_mask):
     # Handle list input (use first image if multiple)
     if isinstance(moving, list):
         moving = moving[0] if moving else None
-    
+
     # Handle undefined or None input
     if moving is None or moving == Undefined or isinstance(moving, type(Undefined)):
         raise ValueError("No moving image provided for registration")
-    
+
     # Ensure moving is a valid path string
     moving = str(moving)
     if not Path(moving).exists():
@@ -1428,7 +1431,7 @@ def _register_modality(moving, fixed, fixed_mask):
 
     result = ants_rigid.run()
     registered_img = result.outputs.warped_image
-    
+
     if registered_img is None or registered_img == Undefined:
         raise RuntimeError("Registration failed: no output warped image produced")
 
@@ -1503,6 +1506,7 @@ def _deface_anatomical(in_file):
         )
         return in_file
 
+
 def init_anat_template_wf(
     *,
     longitudinal: bool = False,
@@ -1513,7 +1517,7 @@ def init_anat_template_wf(
 ):
     """
     Generate a canonically-oriented, structural average from all input images.
-    
+
     Workflow Graph
         .. workflow::
             :graph2use: orig
@@ -1604,7 +1608,7 @@ def init_anat_template_wf(
             (get1st, outputnode, [('out', 'anat_ref')]),
         ])
         return workflow
-    
+
     anat_conform_xfm = pe.MapNode(
         LTAConvert(in_lta='identity.nofile', out_lta=True),
         iterfield=['source_file', 'target_file'],
@@ -1621,13 +1625,13 @@ def init_anat_template_wf(
         iterfield='input_image',
         name='n4_correct',
         n_procs=1,
-    ) # n_procs=1 for reproducibility
+    )  # n_procs=1 for reproducibility
     # StructuralReference is fs.RobustTemplate if > 1 volume, copying otherwise
     anat_merge = pe.Node(
         StructuralReference(
             auto_detect_sensitivity=True,
-            initial_timepoint=1, # for deterministic behavior
-            intensity_scaling=True, # 7-DOF (rigid + intensity)
+            initial_timepoint=1,  # for deterministic behavior
+            intensity_scaling=True,  # 7-DOF (rigid + intensity)
             subsample_threshold=200,
             fixed_timepoint=not longitudinal,
             no_iteration=not longitudinal,
@@ -1655,7 +1659,7 @@ def init_anat_template_wf(
 
     def _set_threads(in_list, maximum):
         return min(len(in_list), maximum)
-    
+
     workflow.connect([
         (anat_ref_dimensions, anat_conform_xfm, [('anat_valid_list', 'source_file')]),
         (anat_conform, anat_conform_xfm, [('out_file', 'target_file')]),
@@ -1677,9 +1681,11 @@ def init_anat_template_wf(
 
     return workflow
 
+
 def _probseg_fast2bids(inlist):
     """Reorder a list of probseg maps from FAST (CSF, WM, GM) to BIDS (GM, WM, CSF)"""
     return [inlist[2], inlist[1], inlist[0]]
+
 
 def _is_skull_stripped(img):
     """Check if images are skull-stripped"""
@@ -1706,10 +1712,10 @@ def init_hdbet_wf(
 ) -> Workflow:
     """
     Build a workflow for brain extraction using HD-BET.
-    
+
     HD-BET (High-resolution Brain Extraction Tool) is a deep learning-based
     brain extraction method that provides robust skull-stripping.
-    
+
     Parameters
     ----------
     omp_nthreads : int
@@ -1718,19 +1724,19 @@ def init_hdbet_wf(
         Use GPU acceleration (recommended)
     name : str
         Workflow name
-        
+
     Returns
     -------
     Workflow
-        Brain extraction workflow with inputnode.in_files and 
+        Brain extraction workflow with inputnode.in_files and
         outputnode.out_file, out_mask, bias_corrected
     """
     from nipype.interfaces import utility as niu
     from nipype.pipeline import engine as pe
     from nipype.interfaces.ants import N4BiasFieldCorrection
-    
+
     workflow = Workflow(name=name)
-    
+
     inputnode = pe.Node(
         niu.IdentityInterface(fields=['in_files']),
         name='inputnode',
@@ -1739,7 +1745,7 @@ def init_hdbet_wf(
         niu.IdentityInterface(fields=['out_file', 'out_mask', 'bias_corrected', 'out_segm']),
         name='outputnode',
     )
-    
+
     # HD-BET brain extraction
     hdbet = pe.Node(
         niu.Function(
@@ -1750,7 +1756,7 @@ def init_hdbet_wf(
         name='hdbet',
     )
     hdbet.inputs.use_gpu = use_gpu
-    
+
     # N4 bias field correction on brain-extracted image
     n4_correct = pe.Node(
         N4BiasFieldCorrection(
@@ -1763,7 +1769,7 @@ def init_hdbet_wf(
         ),
         name='n4_correct',
     )
-    
+
     workflow.connect([
         (inputnode, hdbet, [(('in_files', _pop), 'in_file')]),
         (hdbet, n4_correct, [('out_file', 'input_image')]),
@@ -1773,24 +1779,24 @@ def init_hdbet_wf(
         ]),
         (n4_correct, outputnode, [('output_image', 'bias_corrected')]),
     ])
-    
+
     # out_segm is not available from HD-BET, set to None
     outputnode.inputs.out_segm = None
-    
+
     return workflow
 
 
 def _run_hdbet(in_file: str, use_gpu: bool = True) -> tuple:
     """
     Run HD-BET brain extraction.
-    
+
     Parameters
     ----------
     in_file : str
         Input NIfTI file path
     use_gpu : bool
         Use GPU acceleration
-        
+
     Returns
     -------
     tuple
@@ -1798,15 +1804,15 @@ def _run_hdbet(in_file: str, use_gpu: bool = True) -> tuple:
     """
     from pathlib import Path
     import subprocess
-    
+
     in_path = Path(in_file)
     out_path = Path.cwd() / f'{in_path.stem.replace(".nii", "")}_hdbet.nii.gz'
-    
+
     # Build HD-BET command
     cmd = ['hd-bet', '-i', str(in_path), '-o', str(out_path)]
     if not use_gpu:
         cmd.extend(['-device', 'cpu'])
-    
+
     try:
         subprocess.run(cmd, capture_output=True, text=True, check=True)
     except FileNotFoundError:
@@ -1815,10 +1821,10 @@ def _run_hdbet(in_file: str, use_gpu: bool = True) -> tuple:
         )
     except subprocess.CalledProcessError as e:
         raise RuntimeError(f"HD-BET failed: {e.stderr}")
-    
+
     # HD-BET creates <output>_mask.nii.gz for the mask
     mask_path = out_path.with_name(out_path.stem.replace('.nii', '') + '_mask.nii.gz')
-    
+
     if not out_path.exists():
         raise RuntimeError(f"HD-BET output not found: {out_path}")
     if not mask_path.exists():
@@ -1828,7 +1834,7 @@ def _run_hdbet(in_file: str, use_gpu: bool = True) -> tuple:
         )
         if not mask_path.exists():
             raise RuntimeError("HD-BET mask not found")
-    
+
     return str(out_path), str(mask_path)
 
 
@@ -1839,29 +1845,29 @@ def init_synthstrip_wf(
 ) -> Workflow:
     """
     Build a workflow for brain extraction using SynthStrip.
-    
+
     SynthStrip is a robust, learning-based brain extraction tool from FreeSurfer
     that works across MRI contrasts and resolutions.
-    
+
     Parameters
     ----------
     omp_nthreads : int
         Number of threads for parallel processing
     name : str
         Workflow name
-        
+
     Returns
     -------
     Workflow
-        Brain extraction workflow with inputnode.in_files and 
+        Brain extraction workflow with inputnode.in_files and
         outputnode.out_file, out_mask, bias_corrected
     """
     from nipype.interfaces import utility as niu
     from nipype.pipeline import engine as pe
     from nipype.interfaces.ants import N4BiasFieldCorrection
-    
+
     workflow = Workflow(name=name)
-    
+
     inputnode = pe.Node(
         niu.IdentityInterface(fields=['in_files']),
         name='inputnode',
@@ -1870,7 +1876,7 @@ def init_synthstrip_wf(
         niu.IdentityInterface(fields=['out_file', 'out_mask', 'bias_corrected', 'out_segm']),
         name='outputnode',
     )
-    
+
     # SynthStrip brain extraction
     synthstrip = pe.Node(
         niu.Function(
@@ -1880,7 +1886,7 @@ def init_synthstrip_wf(
         ),
         name='synthstrip',
     )
-    
+
     # N4 bias field correction on brain-extracted image
     n4_correct = pe.Node(
         N4BiasFieldCorrection(
@@ -1893,7 +1899,7 @@ def init_synthstrip_wf(
         ),
         name='n4_correct',
     )
-    
+
     workflow.connect([
         (inputnode, synthstrip, [(('in_files', _pop), 'in_file')]),
         (synthstrip, n4_correct, [('out_file', 'input_image')]),
@@ -1903,22 +1909,22 @@ def init_synthstrip_wf(
         ]),
         (n4_correct, outputnode, [('output_image', 'bias_corrected')]),
     ])
-    
+
     # out_segm is not available from SynthStrip, set to None
     outputnode.inputs.out_segm = None
-    
+
     return workflow
 
 
 def _run_synthstrip(in_file: str) -> tuple:
     """
     Run SynthStrip brain extraction.
-    
+
     Parameters
     ----------
     in_file : str
         Input NIfTI file path
-        
+
     Returns
     -------
     tuple
@@ -1926,11 +1932,11 @@ def _run_synthstrip(in_file: str) -> tuple:
     """
     from pathlib import Path
     import subprocess
-    
+
     in_path = Path(in_file)
     out_path = Path.cwd() / f'{in_path.stem.replace(".nii", "")}_synthstrip.nii.gz'
     mask_path = Path.cwd() / f'{in_path.stem.replace(".nii", "")}_synthstrip_mask.nii.gz'
-    
+
     # Build SynthStrip command (mri_synthstrip is the FreeSurfer command)
     cmd = [
         'mri_synthstrip',
@@ -1938,7 +1944,7 @@ def _run_synthstrip(in_file: str) -> tuple:
         '-o', str(out_path),
         '-m', str(mask_path),
     ]
-    
+
     try:
         subprocess.run(cmd, capture_output=True, text=True, check=True)
     except FileNotFoundError:
@@ -1953,10 +1959,10 @@ def _run_synthstrip(in_file: str) -> tuple:
             )
     except subprocess.CalledProcessError as e:
         raise RuntimeError(f"SynthStrip failed: {e.stderr}")
-    
+
     if not out_path.exists():
         raise RuntimeError(f"SynthStrip output not found: {out_path}")
     if not mask_path.exists():
         raise RuntimeError(f"SynthStrip mask not found: {mask_path}")
-    
+
     return str(out_path), str(mask_path)

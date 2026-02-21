@@ -235,7 +235,7 @@ class TestDICOMToNIfTIConversion:
         # Find all DICOM files (.IMA, .dcm)
         dicom_files = list(example_data_dir.glob("**/*.IMA"))
         dicom_files.extend(list(example_data_dir.glob("**/*.dcm")))
-        
+
         assert len(dicom_files) > 0, f"No DICOM files found in {example_data_dir}"
 
         LOGGER.info(f"✓ Found {len(dicom_files)} DICOM files in example data")
@@ -371,6 +371,7 @@ class TestDICOMToNIfTIConversion:
 
         LOGGER.info("✓ BIDS filename construction tests passed")
 
+
 def _get_or_spoof_example_data_dir() -> Path:
     """
     Return example data dir, creating synthetic stubs if real data is absent.
@@ -380,7 +381,6 @@ def _get_or_spoof_example_data_dir() -> Path:
     Path
         Path to the directory containing example (or spoofed) data files
     """
-    import shutil
     import tempfile
 
     data_dir = Path(__file__).parent.parent / "examples" / "data"
@@ -404,6 +404,7 @@ def _get_or_spoof_example_data_dir() -> Path:
             (series_path / f"stub_{i:04d}.dcm").write_bytes(b"\x00" * 256)
     return temp_root
 
+
 if __name__ == "__main__":
     _data_dir = _get_or_spoof_example_data_dir()
     dicom_test_suite = TestDICOMToNIfTIConversion()
@@ -416,7 +417,7 @@ if __name__ == "__main__":
         bids_path = Path(temp_bids_dir)
         bids_test_suite.test_bids_directory_structure(bids_path)
         bids_test_suite.test_create_subject_session_dirs(bids_path)
-        #bids_test_suite.test_create_dummy_nifti_files(bids_path)
+        # bids_test_suite.test_create_dummy_nifti_files(bids_path)
         bids_test_suite.test_get_subjects_sessions(bids_path)
         bids_test_suite.test_anatomical_file_naming(bids_path)
         bids_test_suite.test_validate_bids_with_minimal_structure(bids_path)

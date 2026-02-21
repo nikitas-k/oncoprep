@@ -14,14 +14,14 @@ LOGGER = get_logger(__name__)
 def validate_bids_dataset(bids_dir: Path, ignore_rules: Optional[list[str]] = None) -> dict:
     """
     Validate BIDS dataset using bids-validator.
-    
+
     Parameters
     ----------
     bids_dir : Path
         Path to BIDS dataset
     ignore_rules : Optional[list[str]]
         List of validation rules to ignore
-        
+
     Returns
     -------
     dict
@@ -29,18 +29,18 @@ def validate_bids_dataset(bids_dir: Path, ignore_rules: Optional[list[str]] = No
     """
     try:
         import subprocess
-        
+
         # Build command
         cmd = ['bids-validator', str(bids_dir), '--json']
-        
+
         # Add ignored rules if provided
         if ignore_rules:
             for rule in ignore_rules:
                 cmd.extend(['--ignoreNiftiHeaders', rule])
-        
+
         # Run validator
         result = subprocess.run(cmd, capture_output=True, text=True, check=False)
-        
+
         if result.returncode == 0 or result.stdout:
             try:
                 output = json.loads(result.stdout)
@@ -63,7 +63,7 @@ def validate_bids_dataset(bids_dir: Path, ignore_rules: Optional[list[str]] = No
                 'issues': {'error': [result.stderr]},
                 'output': {},
             }
-            
+
     except FileNotFoundError:
         LOGGER.error("bids-validator not found. Install with: pip install bids-validator")
         return {
@@ -83,7 +83,7 @@ def validate_bids_dataset(bids_dir: Path, ignore_rules: Optional[list[str]] = No
 def print_validation_report(bids_dir: Path, validation_result: dict) -> None:
     """
     Print validation report.
-    
+
     Parameters
     ----------
     bids_dir : Path
@@ -95,48 +95,48 @@ def print_validation_report(bids_dir: Path, validation_result: dict) -> None:
     print("BIDS Validation Report")
     print(f"{'=' * 70}")
     print(f"Dataset: {bids_dir}")
-    
+
     if validation_result['valid']:
         print("Status: ✓ VALID")
     else:
         print("Status: ✗ INVALID")
-    
+
     issues = validation_result.get('issues', {})
-    
+
     if 'errors' in issues:
         print(f"\nErrors ({len(issues['errors'])}):")
         for error in issues['errors'][:5]:
             print(f"  - {error}")
         if len(issues['errors']) > 5:
             print(f"  ... and {len(issues['errors']) - 5} more errors")
-    
+
     if 'warnings' in issues:
         print(f"\nWarnings ({len(issues['warnings'])}):")
         for warning in issues['warnings'][:5]:
             print(f"  - {warning}")
         if len(issues['warnings']) > 5:
             print(f"  ... and {len(issues['warnings']) - 5} more warnings")
-    
+
     print(f"\n{'=' * 70}\n")
 
 
 def auto_validate_after_conversion(bids_dir: Path) -> bool:
     """
     Automatically validate BIDS dataset after conversion.
-    
+
     Parameters
     ----------
     bids_dir : Path
         Path to BIDS dataset
-        
+
     Returns
     -------
     bool
         True if validation passed
     """
     LOGGER.info(f"Validating BIDS dataset at {bids_dir}")
-    
+
     result = validate_bids_dataset(bids_dir)
     print_validation_report(bids_dir, result)
-    
+
     return result['valid']

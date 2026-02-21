@@ -78,7 +78,7 @@ def example_dicom_dir() -> Generator[Path, None, None]:
     Download and extract example DICOM data from datalad.
 
     DEPRECATED: Use example_data_dir() instead for local NIfTI files.
-    
+
     Uses https://github.com/datalad/example-dicom-structural as the data source.
     This fixture runs once per test session and cleans up afterward.
 

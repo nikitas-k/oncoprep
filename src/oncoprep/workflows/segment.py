@@ -410,7 +410,7 @@ def _find_segmentation_result(results_dir, container_id, _wait=None):
             ]
             # If we have combined files, use those; otherwise fall back to all matches
             matches = combined_matches if combined_matches else matches
-            
+
             if len(matches) > 1:
                 # Return file with most unique labels
                 import nibabel as nb
@@ -521,15 +521,15 @@ def _fuse_segmentations(
 
 def _convert_to_old_labels(seg_file):
     """Convert raw BraTS model output to old label scheme.
-    
+
     Raw BraTS model outputs use label 4 for enhancing tumor.
     Old scheme remaps: 4 -> 3 for enhancing tumor.
-    
+
     Parameters
     ----------
     seg_file : str or None
         Path to raw segmentation file, or None if segmentation failed
-        
+
     Returns
     -------
     str or None
@@ -539,22 +539,22 @@ def _convert_to_old_labels(seg_file):
     import numpy as np
     from pathlib import Path
     import logging
-    
+
     if seg_file is None:
         logging.getLogger('nipype.workflow').warning(
             "Segmentation file is None, skipping old label conversion"
         )
         return None
-    
+
     if not os.path.isfile(seg_file):
         logging.getLogger('nipype.workflow').warning(
             f"Segmentation file does not exist: {seg_file}, skipping old label conversion"
         )
         return None
-    
+
     img = nib.load(seg_file)
     data = np.asarray(img.dataobj)
-    
+
     # Create old label mapping
     # Raw: 1=NCR, 2=ED, 4=ET -> Old: 1=NCR, 2=ED, 3=ET
     old_labels = np.zeros_like(data, dtype=np.uint8)
@@ -563,21 +563,21 @@ def _convert_to_old_labels(seg_file):
     old_labels[data == 4] = 3  # ET becomes 3
     # Resection cavity (if present as label 5 in raw) -> 4
     old_labels[data == 5] = 4
-    
+
     # Save to node's working directory (not derivatives)
     out_dir = os.path.abspath('tumor_labels')
     os.makedirs(out_dir, exist_ok=True)
     out_path = str(Path(out_dir) / "tumor_seg_old_labels.nii.gz")
-    
+
     out_img = nib.Nifti1Image(old_labels, img.affine, img.header)
     nib.save(out_img, out_path)
-    
+
     return out_path
 
 
 def _convert_to_new_labels(seg_file):
     """Convert raw BraTS model output to new derived label scheme.
-    
+
     Creates composite labels from raw BraTS segmentation:
     - ET (1): Enhancing tumor only
     - TC (2): Tumor core = NCR + ET
@@ -585,12 +585,12 @@ def _convert_to_new_labels(seg_file):
     - NETC (4): Non-enhancing tumor core = NCR only
     - SNFH (5): FLAIR hyperintensity = ED only
     - RC (6): Resection cavity (optional)
-    
+
     Parameters
     ----------
     seg_file : str or None
         Path to raw segmentation file, or None if segmentation failed
-        
+
     Returns
     -------
     str or None
@@ -600,59 +600,59 @@ def _convert_to_new_labels(seg_file):
     import numpy as np
     from pathlib import Path
     import logging
-    
+
     if seg_file is None:
         logging.getLogger('nipype.workflow').warning(
             "Segmentation file is None, skipping new label conversion"
         )
         return None
-    
+
     if not os.path.isfile(seg_file):
         logging.getLogger('nipype.workflow').warning(
             f"Segmentation file does not exist: {seg_file}, skipping new label conversion"
         )
         return None
-    
+
     img = nib.load(seg_file)
     data = np.asarray(img.dataobj)
-    
+
     # Extract raw labels
     # Raw BraTS: 1=NCR, 2=ED, 4=ET, 5=RC (optional)
     ncr_mask = (data == 1)
     ed_mask = (data == 2)
     et_mask = (data == 4)
     rc_mask = (data == 5)
-    
+
     # Create new derived labels
     new_labels = np.zeros_like(data, dtype=np.uint8)
-    
+
     # Priority order (lower labels overwritten by higher priority):
     # WT (3) = NCR + ED + ET - lowest priority for visualization
     new_labels[ncr_mask | ed_mask | et_mask] = 3
-    
+
     # TC (2) = NCR + ET
     new_labels[ncr_mask | et_mask] = 2
-    
+
     # SNFH (5) = ED only (peritumoral edema / FLAIR hyperintensity)
     new_labels[ed_mask & ~ncr_mask & ~et_mask] = 5
-    
+
     # NETC (4) = NCR only (non-enhancing tumor core)
     new_labels[ncr_mask & ~et_mask] = 4
-    
+
     # ET (1) = Enhancing tumor only - highest tumor priority
     new_labels[et_mask] = 1
-    
+
     # RC (6) = Resection cavity (optional, post-op)
     new_labels[rc_mask] = 6
-    
+
     # Save to node's working directory (not derivatives)
     out_dir = os.path.abspath('tumor_labels')
     os.makedirs(out_dir, exist_ok=True)
     out_path = str(Path(out_dir) / "tumor_seg_new_labels.nii.gz")
-    
+
     out_img = nib.Nifti1Image(new_labels, img.affine, img.header)
     nib.save(out_img, out_path)
-    
+
     return out_path
 
 
@@ -1335,7 +1335,11 @@ def init_anat_seg_wf(
             ]),
         ])
 
-        model_desc = f"an ensemble of {len(model_keys)} models with BraTS-specific SIMPLE fusion (consensus voting with DICE-based quality weighting)"
+        model_desc = (
+            f"an ensemble of {len(model_keys)} models with "
+            f"BraTS-specific SIMPLE fusion "
+            f"(consensus voting with DICE-based quality weighting)"
+        )
 
     workflow.__desc__ = f"""
 ## Tumor Segmentation

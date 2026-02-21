@@ -10,6 +10,7 @@ LOGGER = get_logger(__name__)
 
 REQUIRED_MODALITIES = ("T1", "T1ce", "T2", "FLAIR")
 
+
 @dataclass(frozen=True)
 class BratsSubject:
     subject_id: str

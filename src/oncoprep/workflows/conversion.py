@@ -147,25 +147,25 @@ def _organize_bids_dir(
 
     """
     bids_path = Path(bids_root)
-    
+
     # Ensure subject ID doesn't have prefix
     if subject.startswith('sub-'):
         subject = subject.replace('sub-', '')
-    
+
     # Create subject directory
     subject_dir = bids_path / f'sub-{subject}'
-    
+
     if session:
         # Ensure session ID doesn't have prefix
         if session.startswith('ses-'):
             session = session.replace('ses-', '')
         subject_dir = subject_dir / f'ses-{session}'
-    
+
     # Create anat and func subdirectories
     (subject_dir / 'anat').mkdir(parents=True, exist_ok=True)
     (subject_dir / 'func').mkdir(parents=True, exist_ok=True)
     (subject_dir / 'dwi').mkdir(parents=True, exist_ok=True)
-    
+
     LOGGER.info(f"Created BIDS directory structure at {subject_dir}")
     return str(subject_dir)
 

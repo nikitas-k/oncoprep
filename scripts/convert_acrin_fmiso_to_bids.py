@@ -73,7 +73,7 @@ def _run_dcm2niix(dicom_dir: Path, output_dir: Path, fname_pattern: str) -> List
         "dcm2niix",
         "-z", "y",           # gzip compress
         "-b", "y",           # generate BIDS sidecar
-        "-f", fname_pattern, # filename pattern
+        "-f", fname_pattern,  # filename pattern
         "-o", str(output_dir),
         str(dicom_dir),
     ]

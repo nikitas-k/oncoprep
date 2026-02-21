@@ -27,9 +27,9 @@ def main():
         except (ImportError, AttributeError):
             print("oncoprep 0.1.0")
         return 0
-    
+
     opts = get_dicom_parser().parse_args()
-    
+
     # Determine if single subject or batch mode
     if opts.subject:
         # Single subject mode
@@ -47,7 +47,7 @@ def get_dicom_parser():
                     'Batch mode:     oncoprep-dicom DICOM_ROOT BIDS_DIR [--pattern "PATTERN"] [--n-procs N]',
         formatter_class=RawTextHelpFormatter,
     )
-    
+
     # Positional arguments
     parser.add_argument(
         'dicom_dir',
@@ -61,7 +61,7 @@ def get_dicom_parser():
         type=Path,
         help='output BIDS dataset directory',
     )
-    
+
     # Subject/session options
     g_bids = parser.add_argument_group('BIDS Options')
     g_bids.add_argument(
@@ -75,7 +75,7 @@ def get_dicom_parser():
         default=None,
         help='session identifier (without "ses-" prefix, optional)',
     )
-    
+
     # Batch options
     g_batch = parser.add_argument_group('Batch Mode Options (when --subject is omitted)')
     g_batch.add_argument(
@@ -91,7 +91,7 @@ def get_dicom_parser():
         help='number of parallel processes for batch conversion\n'
              'default: 1 (no parallelization)',
     )
-    
+
     # Conversion options
     g_conv = parser.add_argument_group('Conversion Options')
     g_conv.add_argument(
@@ -116,7 +116,7 @@ def get_dicom_parser():
         default=None,
         help='path to BIDS filter JSON file for selective conversion',
     )
-    
+
     # Validation options
     g_valid = parser.add_argument_group('Validation Options')
     g_valid.add_argument(
@@ -124,7 +124,7 @@ def get_dicom_parser():
         action='store_true',
         help='run BIDS validation after conversion',
     )
-    
+
     # Logging options
     g_log = parser.add_argument_group('Logging Options')
     g_log.add_argument(
@@ -138,23 +138,23 @@ def get_dicom_parser():
         action='store_true',
         help='show version number and exit',
     )
-    
+
     return parser
 
 
 def run_single_subject(opts) -> int:
     """Run single subject conversion."""
     LOGGER.info(f"Starting single subject conversion: sub-{opts.subject}")
-    
+
     # Create BIDS dataset description
     if not opts.output_dir.exists():
         opts.output_dir.mkdir(parents=True, exist_ok=True)
-    
+
     try:
         create_bids_dataset_description(opts.output_dir)
     except Exception as e:
         LOGGER.warning(f"Could not create dataset_description.json: {e}")
-    
+
     # Run conversion
     try:
         result = convert_subject_dicoms_to_bids(
@@ -165,19 +165,19 @@ def run_single_subject(opts) -> int:
             conversion_tool=opts.converter,
             overwrite=opts.overwrite,
         )
-        
+
         if result:
             LOGGER.info(f"✓ Successfully converted sub-{opts.subject}")
-            
+
             # Run validation if requested
             if opts.validate:
                 _validate_dataset(opts.output_dir)
-            
+
             return 0
         else:
             LOGGER.error(f"✗ Failed to convert sub-{opts.subject}")
             return 1
-            
+
     except Exception as e:
         LOGGER.error(f"✗ Conversion failed: {e}")
         return 1
@@ -185,43 +185,43 @@ def run_single_subject(opts) -> int:
 
 def run_batch(opts) -> int:
     """Run batch conversion."""
-    
+
     LOGGER.info(f"Starting batch conversion from {opts.dicom_dir}")
     LOGGER.info(f"Pattern: {opts.pattern}, Processes: {opts.n_procs}")
-    
+
     # Create BIDS dataset description
     if not opts.output_dir.exists():
         opts.output_dir.mkdir(parents=True, exist_ok=True)
-    
+
     try:
         create_bids_dataset_description(opts.output_dir)
     except Exception as e:
         LOGGER.warning(f"Could not create dataset_description.json: {e}")
-    
+
     # Find all matching subdirectories
     subject_dirs = sorted([d for d in opts.dicom_dir.glob(opts.pattern) if d.is_dir()])
-    
+
     if not subject_dirs:
         LOGGER.warning(f"No directories matching pattern '{opts.pattern}' found in {opts.dicom_dir}")
         return 0
-    
+
     LOGGER.info(f"Found {len(subject_dirs)} directories to process")
-    
+
     # Prepare conversion tasks
     tasks = []
     for subject_dir in subject_dirs:
         subject_id = subject_dir.name
         tasks.append((subject_dir, opts.output_dir, subject_id, opts.session, opts.converter, opts.overwrite))
-    
+
     # Run conversions
     successful = 0
     failed = 0
-    
+
     if opts.n_procs > 1:
         # Parallel execution
         with Pool(processes=opts.n_procs) as pool:
             results = pool.map(_convert_subject_wrapper, tasks)
-        
+
         for subject_id, success in results:
             if success:
                 successful += 1
@@ -250,7 +250,7 @@ def run_batch(opts) -> int:
             except Exception as e:
                 failed += 1
                 LOGGER.error(f"✗ sub-{subject_id}: {e}")
-    
+
     # Print summary
     total = successful + failed
     LOGGER.info(f"\n{'='*50}")
@@ -261,18 +261,18 @@ def run_batch(opts) -> int:
     LOGGER.info(f"Failed:             {failed}")
     LOGGER.info(f"Success rate:       {successful/total*100:.1f}%")
     LOGGER.info(f"{'='*50}")
-    
+
     # Run validation if requested
     if opts.validate:
         _validate_dataset(opts.output_dir)
-    
+
     return 0 if failed == 0 else 1
 
 
 def _convert_subject_wrapper(args: Tuple) -> Tuple[str, bool]:
     """Wrapper for multiprocessing pool."""
     subject_dir, bids_dir, subject_id, session, converter, overwrite = args
-    
+
     try:
         result = convert_subject_dicoms_to_bids(
             source_dir=subject_dir,
@@ -292,7 +292,7 @@ def _validate_dataset(bids_dir: Path) -> None:
     """Validate BIDS dataset."""
     try:
         from oncoprep.bids_validation import validate_bids_dataset, print_validation_report
-        
+
         LOGGER.info(f"\nValidating BIDS dataset at {bids_dir}...")
         results = validate_bids_dataset(str(bids_dir))
         print_validation_report(results)

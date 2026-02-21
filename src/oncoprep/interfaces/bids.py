@@ -216,7 +216,7 @@ def get_anatomical_files(
 
     """
     from bids.layout import Query
-    
+
     if modalities is None:
         modalities = ['T1w', 'T1ce', 'T2w', 'FLAIR']
 
@@ -444,16 +444,16 @@ class OncoprepBIDSDataGrabber(SimpleInterface):
     def _run_interface(self, runtime):
         """Run the interface to grab BIDS data."""
         subject_data = self.inputs.subject_data
-        
+
         # Standard modalities
         for key in ['t1w', 't1ce', 't2w', 'flair', 'bold', 'fmap', 'roi', 'dwi']:
             self._results[key] = subject_data.get(key, [])
-        
+
         # Store full dict for reference
         self._results['out_dict'] = {
             **subject_data,
         }
-        
+
         return runtime
 
 

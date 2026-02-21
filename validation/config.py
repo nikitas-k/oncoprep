@@ -46,6 +46,7 @@ SURFACE_DICE_TOLERANCES: List[float] = [1.0, 2.0]
 # Dataset specifications
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class DatasetSpec:
     """Specification for a single validation dataset."""
@@ -432,6 +433,7 @@ PHASE_E_ENDPOINTS = {
 # SAP (Statistical Analysis Plan) parameters
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class SAPConfig:
     """Pre-specified statistical analysis plan parameters."""
@@ -490,6 +492,7 @@ BIDS_DERIVATIVES_OPTIONAL = [
 # Perturbation definitions (Phase C)
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class PerturbationSpec:
     """Specification for a single perturbation type."""
@@ -535,6 +538,7 @@ PERTURBATIONS: Dict[str, PerturbationSpec] = {
 # Compute / reproducibility spec
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class ComputeSpec:
     """Target compute environments for reproducibility testing."""
@@ -553,6 +557,7 @@ COMPUTE_ENVIRONMENTS: List[ComputeSpec] = [
 # ---------------------------------------------------------------------------
 # Utility helpers
 # ---------------------------------------------------------------------------
+
 
 def get_output_root(base: Path) -> Path:
     """Return ``<base>/validation_results/`` and create it."""

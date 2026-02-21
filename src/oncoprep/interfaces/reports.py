@@ -256,6 +256,7 @@ class FSSurfaceReport(SimpleInterface):
         )
         return runtime
 
+
 class _TumorROIsPlotInputSpec(_SVGReportCapableInputSpec):
     in_file = File(exists=True, mandatory=True, desc='background volume (e.g. T1w)')
     in_rois = InputMultiObject(
@@ -310,5 +311,6 @@ class TumorROIsPlot(_ROIsPlot):
 
         svg_text = svg_text.replace('</svg>', legend_svg + '\n</svg>')
         Path(self._out_report).write_text(svg_text)
+
 
 __all__ = ['SummaryInterface', 'SubjectSummary', 'AboutSummary', 'FSSurfaceReport', 'TumorROIsPlot']

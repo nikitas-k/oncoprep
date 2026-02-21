@@ -366,7 +366,7 @@ def analyze_reader_study(
 
     if edit_magnitudes:
         pt, lo, hi = bootstrap_ci(np.array(edit_magnitudes), "median",
-                                   SAP.n_bootstrap, SAP.ci_level, SAP.random_seed)
+                                  SAP.n_bootstrap, SAP.ci_level, SAP.random_seed)
         results.edit_magnitude_median = pt
         results.edit_magnitude_ci = (lo, hi)
 

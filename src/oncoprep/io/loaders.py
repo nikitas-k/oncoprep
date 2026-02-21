@@ -1,5 +1,6 @@
 from pathlib import Path
 
+
 def load_mapping_from_file(mapping_file: Path) -> dict[str, str]:
     """Load modality mapping from a file.
 

@@ -98,7 +98,7 @@ def _convert_to_new_labels(seg_file):
     new = np.zeros_like(data, dtype=np.uint8)
     new[ncr | ed | et] = 3   # WT
     new[ncr | et] = 2        # TC
-    new[ed & ~ncr & ~et] = 5 # SNFH
+    new[ed & ~ncr & ~et] = 5  # SNFH
     new[ncr & ~et] = 4       # NETC
     new[et] = 1              # ET
     new[rc] = 6              # RC

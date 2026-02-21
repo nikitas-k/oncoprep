@@ -523,7 +523,7 @@ class TestGroupComBat:
 
         # Create 6 subjects across 2 sites (3 per site)
         subjects = ['sub-001', 'sub-002', 'sub-003',
-                     'sub-004', 'sub-005', 'sub-006']
+                    'sub-004', 'sub-005', 'sub-006']
         sites = ['siteA', 'siteA', 'siteA',
                  'siteB', 'siteB', 'siteB']
 
@@ -917,7 +917,7 @@ class TestLongitudinalComBat:
         deriv = tmp_dir / 'xsect' / 'oncoprep'
         rng = np.random.default_rng(789)
         subjects = ['sub-001', 'sub-002', 'sub-003',
-                     'sub-004', 'sub-005', 'sub-006']
+                    'sub-004', 'sub-005', 'sub-006']
         sites = ['siteA', 'siteA', 'siteA',
                  'siteB', 'siteB', 'siteB']
         for i, subj in enumerate(subjects):

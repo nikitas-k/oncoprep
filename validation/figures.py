@@ -18,9 +18,9 @@ from typing import Dict, List
 
 import matplotlib
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
-import numpy as np
+import matplotlib.pyplot as plt  # noqa: E402
+import matplotlib.gridspec as gridspec  # noqa: E402
+import numpy as np  # noqa: E402
 
 try:
     import seaborn as sns
@@ -29,7 +29,7 @@ try:
 except ImportError:
     HAS_SEABORN = False
 
-from .config import DATASETS, PERTURBATIONS, REGION_MAP
+from .config import DATASETS, PERTURBATIONS, REGION_MAP  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -222,7 +222,7 @@ def figure4_segmentation_performance(
                 label = region if region not in labels_used else None
                 labels_used.add(region)
                 ax_b.errorbar(i, median, yerr=[[median - ci_lo], [ci_hi - median]],
-                             fmt="o", color=color, capsize=4, markersize=8, label=label)
+                              fmt="o", color=color, capsize=4, markersize=8, label=label)
 
     ax_b.set_xticks(range(len(regions)))
     ax_b.set_xticklabels(regions)
@@ -244,8 +244,8 @@ def figure4_segmentation_performance(
                 if valid:
                     labels, vals = zip(*valid)
                     ax_c.plot(range(len(labels)), vals, "o-",
-                             color=REGION_COLORS.get(region, "#999999"),
-                             label=region, markersize=6)
+                              color=REGION_COLORS.get(region, "#999999"),
+                              label=region, markersize=6)
                     ax_c.set_xticks(range(len(labels)))
                     ax_c.set_xticklabels(labels, fontsize=8)
 
@@ -333,8 +333,10 @@ def figure5_robustness(
                 x_pos = np.arange(len(auc_vals))
                 offset = list(regions).index(region) * 0.15
                 color = REGION_COLORS.get(region, "#999999")
-                ax_auc.bar(x_pos + offset, auc_vals, 0.12, label=region if region not in [r for r in regions[:list(regions).index(region)]] else None,
-                          color=color, alpha=0.7)
+                ax_auc.bar(x_pos + offset, auc_vals, 0.12,
+                           label=region if region not in
+                           [r for r in regions[:list(regions).index(region)]] else None,
+                           color=color, alpha=0.7)
 
     if perturbation_types:
         ax_auc.set_xticks(np.arange(len(perturbation_types)) + 0.2)

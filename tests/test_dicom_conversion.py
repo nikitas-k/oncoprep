@@ -73,10 +73,10 @@ class TestBIDSDatasetDescription:
             desc_file = create_bids_dataset_description(bids_dir)
 
             assert desc_file.exists()
-            
+
             with open(desc_file) as f:
                 desc = json.load(f)
-            
+
             assert desc['Name'] == 'OncoPrep DICOM Conversion Dataset'
             assert desc['BIDSVersion'] == '1.9.0'
             assert desc['DatasetType'] == 'raw'
@@ -87,13 +87,13 @@ class TestBIDSDatasetDescription:
         """Test that existing dataset_description.json is not overwritten."""
         with tempfile.TemporaryDirectory() as tmpdir:
             bids_dir = Path(tmpdir)
-            
+
             # Create initial description
             desc_file = create_bids_dataset_description(bids_dir)
-            
+
             # Try to create again
             desc_file2 = create_bids_dataset_description(bids_dir)
-            
+
             # Should be the same file
             assert desc_file == desc_file2
 
@@ -107,20 +107,20 @@ class TestBIDSSidecar:
             bids_dir = Path(tmpdir)
             nifti_path = bids_dir / 'sub-001_T1w.nii.gz'
             nifti_path.touch()
-            
+
             metadata = {
                 'RepetitionTime': 2.3,
                 'EchoTime': 0.00456,
                 'FlipAngle': 9,
             }
-            
+
             json_path = create_bids_sidecar(nifti_path, metadata)
-            
+
             assert json_path.exists()
-            
+
             with open(json_path) as f:
                 sidecar = json.load(f)
-            
+
             assert sidecar['RepetitionTime'] == 2.3
             assert sidecar['EchoTime'] == 0.00456
             assert sidecar['FlipAngle'] == 9
@@ -131,12 +131,12 @@ class TestBIDSSidecar:
             bids_dir = Path(tmpdir)
             nifti_path = bids_dir / 'sub-001_T1w.nii.gz'
             nifti_path.touch()
-            
+
             json_path = create_bids_sidecar(nifti_path)
-            
+
             with open(json_path) as f:
                 sidecar = json.load(f)
-            
+
             # Should have default values
             assert 'RepetitionTime' in sidecar
             assert 'EchoTime' in sidecar
@@ -152,10 +152,10 @@ class TestConversionExampleData:
     def test_example_data_discovery(self) -> None:
         """Test that example DICOM data can be discovered."""
         example_data = Path('examples/data')
-        
+
         dicom_files = list(example_data.glob('**/*.IMA')) + list(example_data.glob('**/*.dcm'))
         assert len(dicom_files) > 0, "No DICOM files found in examples/data"
-        
+
         # Check for series directories
         series_dirs = [d for d in example_data.iterdir() if d.is_dir() and not d.name.startswith('.')]
         assert len(series_dirs) > 0, "No DICOM series directories found"

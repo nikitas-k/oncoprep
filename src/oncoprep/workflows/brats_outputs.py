@@ -17,22 +17,22 @@ from ..interfaces import DerivativesDataSink
 
 def _check_seg_file(seg_file):
     """Check if segmentation file is valid and exists on disk.
-    
+
     Returns the file path if valid and exists, raises RuntimeError otherwise.
     This allows the workflow to skip downstream nodes gracefully.
     """
     import os
     import logging
     LOGGER = logging.getLogger('nipype.workflow')
-    
+
     if seg_file is None or seg_file == 'None' or str(seg_file) == 'None':
         LOGGER.warning("Segmentation file is None, skipping derivatives save")
         raise RuntimeError("Segmentation failed - no output file to save")
-    
+
     if not os.path.isfile(seg_file):
         LOGGER.warning(f"Segmentation file does not exist: {seg_file}")
         raise RuntimeError(f"Segmentation file not found: {seg_file}")
-    
+
     return seg_file
 
 
@@ -446,7 +446,7 @@ def init_ds_tumor_roi_stats_wf(
 
     compute_stats = pe.Node(
         niu.Function(
-            function=_compute_tumor_roi_stats, #PLACEHOLDER: replace with PyRadiomics-based functions
+            function=_compute_tumor_roi_stats,  # PLACEHOLDER: replace with PyRadiomics-based functions
             input_names=['anatomical_image', 'tumor_mask', 'tumor_seg', 'source_files', 'output_dir'],
             output_names=['stats_file'],
         ),

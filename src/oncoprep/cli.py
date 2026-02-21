@@ -135,7 +135,7 @@ def main():
         except ImportError:
             # Fallback to ~/.cache/templateflow (Linux/macOS default)
             default_tf_home = Path.home() / '.cache' / 'templateflow'
-        
+
         if default_tf_home.exists() and (default_tf_home / 'tpl-MNI152NLin2009cAsym').exists():
             os.environ['TEMPLATEFLOW_HOME'] = str(default_tf_home)
 
@@ -254,15 +254,15 @@ def _handle_fetch_templates() -> int:
 
 def get_parser():
     """Build parser object."""
-    
+
     def _drop_ses(value):
         return value.removeprefix('ses-')
-    
+
     parser = ArgumentParser(
         description='OncoPrep: BraTS-style preprocessing for neuro-oncology imaging',
         formatter_class=RawTextHelpFormatter,
     )
-    
+
     # Positional arguments
     parser.add_argument(
         'bids_dir',
@@ -283,14 +283,14 @@ def get_parser():
         help='processing stage to be run, only "participant" in the case of '
         'OncoPrep (see BIDS-Apps specification).',
     )
-    
+
     # Version
     parser.add_argument(
         '--version',
         action='store_true',
         help='show program\'s version number and exit',
     )
-    
+
     # BIDS filtering options
     g_bids = parser.add_argument_group('Options for filtering BIDS queries')
     g_bids.add_argument(
@@ -333,7 +333,7 @@ def get_parser():
         '\t"unbiased" will construct an unbiased template from all images\n'
         '\t"sessionwise" will independently process each session.',
     )
-    
+
     # Performance options
     g_perfm = parser.add_argument_group('Options to handle performance')
     g_perfm.add_argument(
@@ -379,7 +379,7 @@ def get_parser():
         default=0,
         help='increases log verbosity for each occurrence, debug level is -vvv',
     )
-    
+
     # Workflow configuration
     g_conf = parser.add_argument_group('Workflow configuration')
     g_conf.add_argument(
@@ -457,7 +457,7 @@ def get_parser():
         'written to <output_dir>/oncoprep/combat_batch.csv and used '
         'for harmonization unless --combat-batch is also provided.',
     )
-    
+
     # ANTs options
     g_ants = parser.add_argument_group('Specific options for ANTs registrations')
     g_ants.add_argument(
@@ -497,7 +497,7 @@ def get_parser():
         'ants (ANTs SyN, default), greedy (PICSL Greedy, faster). '
         'default: ants',
     )
-    
+
     # GPU and acceleration options
     g_accel = parser.add_argument_group('GPU and acceleration options')
     g_accel.add_argument(
@@ -524,7 +524,7 @@ def get_parser():
         'Use "oncoprep-models pull -o DIR" to download models. '
         'Defaults to $ONCOPREP_SEG_CACHE or ~/.cache/oncoprep/seg.',
     )
-    
+
     # Segmentation options
     g_seg = parser.add_argument_group('Segmentation options')
     g_seg.add_argument(
@@ -539,7 +539,7 @@ def get_parser():
         type=Path,
         help='path to custom segmentation model',
     )
-    
+
     # Other options
     g_other = parser.add_argument_group('Other options')
     g_other.add_argument(
@@ -599,7 +599,7 @@ def get_parser():
         default=False,
         help='Use low-quality tools for speed - TESTING ONLY',
     )
-    
+
     # TemplateFlow options
     g_tf = parser.add_argument_group('TemplateFlow options')
     g_tf.add_argument(
@@ -629,7 +629,7 @@ def get_parser():
         'for offline HPC use. Fetches templates for --output-spaces and '
         '--skull-strip-template.',
     )
-    
+
     return parser
 
 
@@ -638,9 +638,9 @@ def build_opts(opts):
     import gc
 
     from nipype import logging as nlogging
-    
+
     set_start_method('forkserver', force=True)
-    
+
     logging.addLevelName(25, 'IMPORTANT')
     logging.addLevelName(15, 'VERBOSE')
     logger = logging.getLogger('cli')
@@ -671,45 +671,45 @@ def build_opts(opts):
             generate_batch_csv=generate_batch,
         )
         sys.exit(retcode)
-    
+
     # --- Participant-level analysis (default) ---
-    
+
     def _warn_redirect(message, category, filename, lineno, file=None, line=None):
         logger.warning('Captured warning (%s): %s', category, message)
-    
+
     warnings.showwarning = _warn_redirect
-    
+
     # Retrieve logging level
     log_level = int(max(25 - 5 * opts.verbose_count, logging.DEBUG))
     logger.setLevel(log_level)
     nlogging.getLogger('nipype.workflow').setLevel(log_level)
     nlogging.getLogger('nipype.interface').setLevel(log_level)
     nlogging.getLogger('nipype.utils').setLevel(log_level)
-    
+
     errno = 0
-    
+
     with Manager() as mgr:
         retval = mgr.dict()
         p = Process(target=build_workflow, args=(opts, retval))
         p.start()
         p.join()
-        
+
         if p.exitcode != 0:
             sys.exit(p.exitcode)
-        
+
         oncoprep_wf = retval['workflow']
         plugin_settings = retval['plugin_settings']
         bids_dir = retval['bids_dir']
         output_dir = retval['output_dir']
         subject_session_list = retval['subject_session_list']
         retcode = retval['return_code']
-    
+
     if oncoprep_wf is None:
         sys.exit(1)
-    
+
     if opts.write_graph:
         oncoprep_wf.write_graph(graph2use='colored', format='svg', simple_form=True)
-    
+
     if opts.reports_only:
         from oncoprep import __version__
         from oncoprep.utils.collate import collate_subject_report
@@ -735,7 +735,7 @@ def build_opts(opts):
             logger.log(25, 'Report generated: %s', report_path)
 
         sys.exit(int(retcode > 0))
-    
+
     if opts.boilerplate:
         from oncoprep.workflows.base import REFERENCES
 
@@ -750,7 +750,7 @@ def build_opts(opts):
         logger.log(25, 'Boilerplate written to %s', log_dir / 'CITATION.md')
         print(boilerplate_text)
         sys.exit(int(retcode > 0))
-    
+
     # Clean up master process before running workflow
     gc.collect()
     try:
@@ -763,7 +763,7 @@ def build_opts(opts):
         logger.log(
             25, 'OncoPrep processing complete. Results in %s', output_dir
         )
-    
+
     sys.exit(int(errno > 0))
 
 
@@ -784,9 +784,9 @@ def build_workflow(opts, retval):
     from niworkflows.utils.bids import collect_participants
 
     from oncoprep.workflows.base import init_oncoprep_wf
-    
+
     logger = logging.getLogger('nipype.workflow')
-    
+
     INIT_MSG = """
     Running OncoPrep version {version} with the following configuration:
       * BIDS dataset path: {bids_dir}.
@@ -794,16 +794,16 @@ def build_workflow(opts, retval):
       * Run identifier: {uuid}.
       * Output spaces: {spaces}.
     """
-    
+
     # Set up instrumental utilities
     run_uuid = '{}_{}'.format(strftime('%Y%m%d-%H%M%S'), uuid.uuid4())
-    
+
     # Validate BIDS directory
     bids_dir = opts.bids_dir.resolve()
     layout = BIDSLayout(str(bids_dir), validate=False)
     subject_list = collect_participants(layout, participant_label=opts.participant_label)
     session_list = opts.session_label or []
-    
+
     subject_session_list = []
     for subject in subject_list:
         sessions = (
@@ -815,7 +815,7 @@ def build_workflow(opts, retval):
             )
             or None
         )
-        
+
         if opts.subject_anatomical_reference == 'sessionwise':
             if not sessions:
                 raise RuntimeError(
@@ -826,13 +826,13 @@ def build_workflow(opts, retval):
                 subject_session_list.append((subject, session))
         else:
             subject_session_list.append((subject, sessions))
-    
+
     _bids_filters = json.loads(opts.bids_filter_file.read_text()) if opts.bids_filter_file else None  # noqa: F841
-    
+
     # Load plugin settings
     if opts.use_plugin is not None:
         from yaml import safe_load as loadyml
-        
+
         with open(opts.use_plugin) as f:
             plugin_settings = loadyml(f)
         plugin_settings.setdefault('plugin_args', {})
@@ -844,7 +844,7 @@ def build_workflow(opts, retval):
                 'maxtasksperchild': 1,
             },
         }
-    
+
     # Resource management
     nprocs = plugin_settings['plugin_args'].get('n_procs')
     if nprocs is None or opts.nprocs is not None:
@@ -857,14 +857,14 @@ def build_workflow(opts, retval):
     # in the main process instead of a spawned worker.
     if nprocs == 1 and plugin_settings.get('plugin') == 'MultiProc':
         plugin_settings = {'plugin': 'Linear', 'plugin_args': {}}
-    
+
     if opts.mem_gb:
         plugin_settings['plugin_args']['memory_gb'] = opts.mem_gb
-    
+
     omp_nthreads = opts.omp_nthreads
     if omp_nthreads == 0:
         omp_nthreads = min(nprocs - 1 if nprocs > 1 else cpu_count(), 8)
-    
+
     if 1 < nprocs < omp_nthreads:
         logger.warning(
             'Per-process threads (--omp-nthreads=%d) exceed total '
@@ -872,15 +872,15 @@ def build_workflow(opts, retval):
             omp_nthreads,
             nprocs,
         )
-    
+
     # Set up directories
     output_dir = opts.output_dir.resolve()
     log_dir = output_dir / 'oncoprep' / 'logs'
     work_dir = opts.work_dir.resolve()
-    
+
     log_dir.mkdir(parents=True, exist_ok=True)
     work_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # Nipype configuration
     ncfg.update_config(
         {
@@ -898,11 +898,11 @@ def build_workflow(opts, retval):
             },
         }
     )
-    
+
     if opts.resource_monitor:
         ncfg.enable_resource_monitor()
         plugin_settings['plugin_args']['status_callback'] = _log_nodes_cb
-    
+
     retval['return_code'] = 0
     retval['plugin_settings'] = plugin_settings
     retval['bids_dir'] = str(bids_dir)
@@ -911,18 +911,18 @@ def build_workflow(opts, retval):
     retval['subject_session_list'] = subject_session_list
     retval['run_uuid'] = run_uuid
     retval['workflow'] = None
-    
+
     # Handle reports-only mode: still build the workflow (needed for
     # visit_desc() boilerplate), but skip heavy template fetching.
     if opts.reports_only:
         logger.log(
-            25, 'Running --reports-only on participants %s', 
+            25, 'Running --reports-only on participants %s',
             _pprint_subses(subject_session_list)
         )
         if opts.run_uuid is not None:
             run_uuid = opts.run_uuid
         # Fall through to build the workflow below so visit_desc() works
-    
+
     if not opts.reports_only:
         from oncoprep import __version__
 
@@ -936,7 +936,7 @@ def build_workflow(opts, retval):
                 spaces=', '.join(opts.output_spaces),
             ),
         )
-    
+
     if not opts.reports_only:
         # Ensure TemplateFlow templates are available
         _ensure_templateflow_templates(
@@ -987,7 +987,7 @@ def build_workflow(opts, retval):
 
     # Restore logger level after workflow construction
     _wf_logger.setLevel(_prev_level)
-    
+
     retval['return_code'] = 0
     return retval
 
@@ -995,7 +995,7 @@ def build_workflow(opts, retval):
 def _pprint_subses(subses: list) -> str:
     """
     Pretty print a list of subjects and sessions.
-    
+
     Example
     -------
     >>> _pprint_subses([('01', 'A'), ('02', ['A', 'B']), ('03', None), ('04', ['A'])])
@@ -1012,7 +1012,7 @@ def _pprint_subses(subses: list) -> str:
             output.append(f'sub-{subject}')
         else:
             output.append(f'sub-{subject} ses-{session}')
-    
+
     return ', '.join(output)
 
 

@@ -735,7 +735,7 @@ class ComBatHarmonization(SimpleInterface):
             categorical_cols=[c for c in bio_cols
                               if batch_df[c].dtype == object],
             continuous_cols=[c for c in bio_cols
-                            if batch_df[c].dtype != object],
+                             if batch_df[c].dtype != object],
         )
         harmonized = combat_result['data']  # features × subjects
 

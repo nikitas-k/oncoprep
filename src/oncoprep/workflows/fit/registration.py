@@ -44,7 +44,7 @@ LOGGER = get_logger(__name__)
 def _greedy_registration(moving_image, fixed_image, omp_nthreads=1, sloppy=False):
     """
     Perform diffeomorphic registration using PICSL Greedy.
-    
+
     Parameters
     ----------
     moving_image : str
@@ -55,7 +55,7 @@ def _greedy_registration(moving_image, fixed_image, omp_nthreads=1, sloppy=False
         Number of threads to use
     sloppy : bool
         Use faster but less accurate settings
-        
+
     Returns
     -------
     forward_transforms : list
@@ -68,7 +68,7 @@ def _greedy_registration(moving_image, fixed_image, omp_nthreads=1, sloppy=False
     import os
     import shutil
     import subprocess
-    
+
     # Check if greedy is available
     if shutil.which('greedy') is None:
         raise FileNotFoundError(
@@ -76,18 +76,18 @@ def _greedy_registration(moving_image, fixed_image, omp_nthreads=1, sloppy=False
             "Install it from https://github.com/pyushkevich/greedy or use "
             "--registration-backend ants instead."
         )
-    
+
     # Set thread count
     os.environ['ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS'] = str(omp_nthreads)
-    
+
     work_dir = Path.cwd()
     prefix = 'greedy_'
-    
+
     affine_out = work_dir / f'{prefix}affine.mat'
     warp_out = work_dir / f'{prefix}warp.nii.gz'
     inv_warp_out = work_dir / f'{prefix}inv_warp.nii.gz'
     warped_out = work_dir / f'{prefix}warped.nii.gz'
-    
+
     # Step 1: Affine registration
     affine_cmd = [
         'greedy',
@@ -100,10 +100,10 @@ def _greedy_registration(moving_image, fixed_image, omp_nthreads=1, sloppy=False
         '-m', 'NCC', '4x4x4',  # Normalized cross-correlation
         '-threads', str(omp_nthreads),
     ]
-    
+
     print(f'Running Greedy affine registration: {" ".join(affine_cmd)}')
     subprocess.run(affine_cmd, check=True)
-    
+
     # Step 2: Deformable registration
     deform_iter = '50x30x10' if sloppy else '100x70x50x20'
     deform_cmd = [
@@ -118,10 +118,10 @@ def _greedy_registration(moving_image, fixed_image, omp_nthreads=1, sloppy=False
         '-s', '2.0vox', '0.5vox',  # Smoothing sigmas
         '-threads', str(omp_nthreads),
     ]
-    
+
     print(f'Running Greedy deformable registration: {" ".join(deform_cmd)}')
     subprocess.run(deform_cmd, check=True)
-    
+
     # Step 3: Apply transform to create warped image
     reslice_cmd = [
         'greedy',
@@ -131,14 +131,14 @@ def _greedy_registration(moving_image, fixed_image, omp_nthreads=1, sloppy=False
         '-r', str(warp_out), str(affine_out),
         '-threads', str(omp_nthreads),
     ]
-    
+
     print(f'Running Greedy reslice: {" ".join(reslice_cmd)}')
     subprocess.run(reslice_cmd, check=True)
-    
+
     # Return transforms in order for forward/inverse application
     forward_transforms = [str(warp_out), str(affine_out)]
     reverse_transforms = [str(affine_out), str(inv_warp_out)]  # Note: inverse order
-    
+
     return forward_transforms, reverse_transforms, str(warped_out)
 
 
@@ -214,20 +214,24 @@ def init_multimodal_template_registration_wf(
     """
     if templates is None:
         templates = ['MNI152NLin2009cAsym']
-    
+
     if modalities is None:
         modalities = ['T1w', 'T1ce', 'T2w', 'FLAIR']
-    
+
     ntpls = len(templates)
     workflow = Workflow(name=name)
-    
+
     # Generate workflow description for boilerplate
     if templates:
         if registration_backend == 'greedy':
             reg_desc = "nonlinear (greedy diffeomorphic) registration with `greedy` (PICSL Greedy)"
         else:
-            reg_desc = f"nonlinear (SyN) registration with `antsRegistration` (ANTs {ANTsInfo.version() or '(version unknown)'})"
-        
+            reg_desc = (
+                f"nonlinear (SyN) registration with "
+                f"`antsRegistration` (ANTs "
+                f"{ANTsInfo.version() or '(version unknown)'})"
+            )
+
         workflow.__desc__ = """\
 Volume-based spatial normalization to {targets} ({targets_id}) was performed through
 {reg_desc},
@@ -246,16 +250,16 @@ and accessed with *TemplateFlow* [{tf_ver}]:
             tf_ver=tf_ver,
             tpls=(' was', 's were')[ntpls != 1],
         )
-        
+
         # Append template citations to description
         for template in templates:
             try:
                 template_meta = get_metadata(template.split(':')[0])
                 template_refs = [f'@{template.split(":")[ 0].lower()}']
-                
+
                 if template_meta.get('RRID', None):
                     template_refs.append(f'RRID:{template_meta["RRID"]}')
-                
+
                 workflow.__desc__ += """\
 *{template_name}* [{template_refs}; TemplateFlow ID: {template}]""".format(
                     template=template,
@@ -266,7 +270,7 @@ and accessed with *TemplateFlow* [{tf_ver}]:
             except Exception as e:
                 LOGGER.warning(f'Could not fetch metadata for template {template}: {e}')
                 workflow.__desc__ += f'*{template}*.\n' if template == templates[-1] else f'*{template}*, '
-    
+
     # Input node
     inputnode = pe.Node(
         niu.IdentityInterface(
@@ -274,15 +278,15 @@ and accessed with *TemplateFlow* [{tf_ver}]:
                 't1w',
                 't1w_mask',
                 'lesion_mask',
-                't1ce', 
-                't2w', 
-                'flair', 
+                't1ce',
+                't2w',
+                'flair',
                 'template']
         ),
         name='inputnode',
     )
     inputnode.iterables = [('template', templates)]
-    
+
     # Output node
     out_fields = [
                 't1w_std',
@@ -352,7 +356,7 @@ and accessed with *TemplateFlow* [{tf_ver}]:
         name='fmt_cohort',
         run_without_submitting=True,
     )
-    
+
     workflow.connect([
         (inputnode, split_desc, [('template', 'template')]),
         (inputnode, trunc_mov, [('t1w', 'op1')]),
@@ -390,8 +394,8 @@ and accessed with *TemplateFlow* [{tf_ver}]:
             ('composite_transform', 'anat2std_xfm'),
             ('inverse_composite_transform', 'std2anat_xfm'),
         ]),
-    ])    
-    
+    ])
+
     # Apply transforms to other modalities (only if inputs are provided)
     # These use Function nodes that handle None inputs gracefully
     apply_t1ce = pe.Node(
@@ -403,7 +407,7 @@ and accessed with *TemplateFlow* [{tf_ver}]:
         name='apply_t1ce',
     )
     apply_t1ce.inputs.backend = registration_backend
-    
+
     apply_t2w = pe.Node(
         niu.Function(
             function=_apply_transform_if_exists,
@@ -413,7 +417,7 @@ and accessed with *TemplateFlow* [{tf_ver}]:
         name='apply_t2w',
     )
     apply_t2w.inputs.backend = registration_backend
-    
+
     apply_flair = pe.Node(
         niu.Function(
             function=_apply_transform_if_exists,
@@ -423,7 +427,7 @@ and accessed with *TemplateFlow* [{tf_ver}]:
         name='apply_flair',
     )
     apply_flair.inputs.backend = registration_backend
-    
+
     # Rename outputs to BIDS convention (handles None input)
     rename_t1w = pe.Node(
         niu.Function(
@@ -434,7 +438,7 @@ and accessed with *TemplateFlow* [{tf_ver}]:
         name='rename_t1w',
     )
     rename_t1w.inputs.modality = 'T1w'
-    
+
     rename_t1ce = pe.Node(
         niu.Function(
             function=_rename_output_safe,
@@ -444,7 +448,7 @@ and accessed with *TemplateFlow* [{tf_ver}]:
         name='rename_t1ce',
     )
     rename_t1ce.inputs.modality = 'T1w'  # T1ce is classified as T1w in BIDS
-    
+
     rename_t2w = pe.Node(
         niu.Function(
             function=_rename_output_safe,
@@ -454,7 +458,7 @@ and accessed with *TemplateFlow* [{tf_ver}]:
         name='rename_t2w',
     )
     rename_t2w.inputs.modality = 'T2w'
-    
+
     rename_flair = pe.Node(
         niu.Function(
             function=_rename_output_safe,
@@ -464,7 +468,7 @@ and accessed with *TemplateFlow* [{tf_ver}]:
         name='rename_flair',
     )
     rename_flair.inputs.modality = 'FLAIR'
-    
+
     # Connect apply transform nodes for other modalities
     # Uses composite_transform from register_T1w (SpatialNormalization uses ANTs internally)
     workflow.connect([
@@ -472,55 +476,55 @@ and accessed with *TemplateFlow* [{tf_ver}]:
         (inputnode, apply_t1ce, [('t1ce', 'input_image')]),
         (tf_select, apply_t1ce, [('t1w_file', 'reference_image')]),
         (register_T1w, apply_t1ce, [('composite_transform', 'transforms')]),
-        
+
         # Apply transforms to T2w
         (inputnode, apply_t2w, [('t2w', 'input_image')]),
         (tf_select, apply_t2w, [('t1w_file', 'reference_image')]),
         (register_T1w, apply_t2w, [('composite_transform', 'transforms')]),
-        
+
         # Apply transforms to FLAIR
         (inputnode, apply_flair, [('flair', 'input_image')]),
         (tf_select, apply_flair, [('t1w_file', 'reference_image')]),
         (register_T1w, apply_flair, [('composite_transform', 'transforms')]),
     ])
-    
+
     # Connect rename nodes and output
     workflow.connect([
         # Rename T1w (warped image from registration)
         (register_T1w, rename_t1w, [('warped_image', 'image_path')]),
         (inputnode, rename_t1w, [('template', 'space')]),
-        
+
         # Rename T1ce
         (apply_t1ce, rename_t1ce, [('output_image', 'image_path')]),
         (inputnode, rename_t1ce, [('template', 'space')]),
-        
+
         # Rename T2w
         (apply_t2w, rename_t2w, [('output_image', 'image_path')]),
         (inputnode, rename_t2w, [('template', 'space')]),
-        
+
         # Rename FLAIR
         (apply_flair, rename_flair, [('output_image', 'image_path')]),
         (inputnode, rename_flair, [('template', 'space')]),
-        
+
         # Connect renamed outputs to outputnode
         (rename_t1w, outputnode, [('output_path', 't1w_std')]),
         (rename_t1ce, outputnode, [('output_path', 't1ce_std')]),
         (rename_t2w, outputnode, [('output_path', 't2w_std')]),
         (rename_flair, outputnode, [('output_path', 'flair_std')]),
     ])
-    
+
     return workflow
 
 
 def _get_template_image(template_name: str) -> str:
     """
     Get the template image path from templateflow.
-    
+
     Parameters
     ----------
     template_name : str
         Template name (e.g., 'MNI152NLin2009cAsym')
-    
+
     Returns
     -------
     str
@@ -528,9 +532,9 @@ def _get_template_image(template_name: str) -> str:
     """
     from templateflow.api import get as get_template
     from nipype import logging as nipype_logging
-    
+
     logger = nipype_logging.getLogger('nipype.workflow')
-    
+
     try:
         template_path = get_template(
             template_name,
@@ -549,7 +553,7 @@ def _get_template_image(template_name: str) -> str:
 def _rename_output(image_path: str, modality: str, space: str) -> str:
     """
     Rename output image to BIDS convention.
-    
+
     Parameters
     ----------
     image_path : str
@@ -558,17 +562,17 @@ def _rename_output(image_path: str, modality: str, space: str) -> str:
         Modality name (T1w, T2w, FLAIR)
     space : str
         Template space name
-    
+
     Returns
     -------
     str
         New path with BIDS-convention naming
     """
     from pathlib import Path as PathlibPath
-    
+
     p = PathlibPath(image_path)
     stem = p.stem.rsplit('.', 1)[0] if '.nii' in p.suffix else p.stem
-    
+
     # Extract subject/session info if present
     parts = stem.split('_')
     base_parts = []
@@ -576,22 +580,22 @@ def _rename_output(image_path: str, modality: str, space: str) -> str:
         if part.startswith('space-'):
             break
         base_parts.append(part)
-    
+
     base = '_'.join(base_parts)
     new_name = f'{base}_space-{space}_{modality}.nii.gz'
     new_path = p.parent / new_name
-    
+
     # Rename file
     if PathlibPath(image_path).exists():
         PathlibPath(image_path).rename(new_path)
-    
+
     return str(new_path)
 
 
 def _rename_output_safe(image_path, modality: str, space: str):
     """
     Rename output image to BIDS convention, handling None inputs.
-    
+
     Parameters
     ----------
     image_path : str or None
@@ -600,7 +604,7 @@ def _rename_output_safe(image_path, modality: str, space: str):
         Modality name (T1w, T2w, FLAIR)
     space : str
         Template space name
-    
+
     Returns
     -------
     str or None
@@ -608,13 +612,13 @@ def _rename_output_safe(image_path, modality: str, space: str):
     """
     if image_path is None:
         return None
-    
+
     # Inline the rename logic (can't call _rename_output from isolated Function node)
     from pathlib import Path as PathlibPath
-    
+
     p = PathlibPath(image_path)
     stem = p.stem.rsplit('.', 1)[0] if '.nii' in p.suffix else p.stem
-    
+
     # Extract subject/session info if present
     parts = stem.split('_')
     base_parts = []
@@ -622,22 +626,22 @@ def _rename_output_safe(image_path, modality: str, space: str):
         if part.startswith('space-'):
             break
         base_parts.append(part)
-    
+
     base = '_'.join(base_parts)
     new_name = f'{base}_space-{space}_{modality}.nii.gz'
     new_path = p.parent / new_name
-    
+
     # Rename file
     if PathlibPath(image_path).exists():
         PathlibPath(image_path).rename(new_path)
-    
+
     return str(new_path)
 
 
 def _apply_transform_if_exists(input_image, reference_image, transforms, backend='ants'):
     """
     Apply transforms to an image only if the input exists.
-    
+
     Parameters
     ----------
     input_image : str or None
@@ -648,7 +652,7 @@ def _apply_transform_if_exists(input_image, reference_image, transforms, backend
         Transform(s) to apply
     backend : str
         Registration backend ('ants' or 'greedy')
-        
+
     Returns
     -------
     str or None
@@ -656,16 +660,16 @@ def _apply_transform_if_exists(input_image, reference_image, transforms, backend
     """
     if input_image is None:
         return None
-    
+
     import subprocess
-    
+
     input_path = Path(input_image)
     output_path = Path.cwd() / f'{input_path.stem.replace(".nii", "")}_std.nii.gz'
-    
+
     # Build transform application command
     if isinstance(transforms, str):
         transforms = [transforms]
-    
+
     if backend == 'greedy':
         # Use greedy to apply transforms
         # Greedy uses -r for reslice mode with -rf (reference) and -rm (moving)
@@ -689,10 +693,11 @@ def _apply_transform_if_exists(input_image, reference_image, transforms, backend
         ]
         for t in transforms:
             cmd.extend(['-t', str(t)])
-    
+
     subprocess.run(cmd, capture_output=True, text=True, check=True)
-    
+
     return str(output_path)
+
 
 def _set_reference(image_type, template_t1w, template_t2w=None):
     """
@@ -714,11 +719,13 @@ def _set_reference(image_type, template_t1w, template_t2w=None):
         return 'T1w'
     return 'T1w'
 
+
 def _fmt_cohort(template, spec):
     cohort = spec.pop('cohort', None)
     if cohort is not None:
         template = f'{template}:cohort-{cohort}'
     return template, spec
+
 
 def _make_outputnode(workflow, out_fields, joinsource):
     if joinsource:

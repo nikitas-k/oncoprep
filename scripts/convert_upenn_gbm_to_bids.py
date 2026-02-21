@@ -27,7 +27,7 @@ import json
 import re
 import shutil
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 
 MODALITY_MAP: Dict[str, str] = {
@@ -102,9 +102,7 @@ def main() -> None:
             print(f"  SKIP: cannot parse {sub_dir.name}")
             continue
 
-        base_id = m.group(1)      # UPENN-GBM-00001
         num_id = m.group(2)       # 00001
-        suffix_code = m.group(3)  # 11
         raw_id = sub_dir.name     # UPENN-GBM-00001_11
 
         sub_label = f"UPENNGBM{num_id}"

@@ -94,6 +94,7 @@ def _create_dilated_tumor_mask(tumor_seg, dilation_radius=4):
     )
     return out_path
 
+
 # Custom BIDS queries for OncoPrep (adds t1ce for neuro-oncology)
 # Uses ceagent entity per BIDS spec: T1ce = T1w with contrast agent (e.g., gadolinium)
 ONCOPREP_BIDS_QUERIES = copy.deepcopy(DEFAULT_BIDS_QUERIES)
@@ -446,7 +447,9 @@ def init_single_subject_wf(
 Preprocessing of anatomical data for subject {subject_id}
 was performed using OncoPrep {__version__}, which is based on Nipype {nipype_ver}
 (@nipype1; @nipype2; RRID:SCR_002502).
-{'When tumor segmentation was enabled, template registration was deferred until after segmentation so that the whole-tumor mask could serve as a cost-function exclusion region for diffeomorphic registration.' if run_segmentation else ''}
+{'When tumor segmentation was enabled, template registration was deferred until '
+'after segmentation so that the whole-tumor mask could serve as a cost-function '
+'exclusion region for diffeomorphic registration.' if run_segmentation else ''}
 """
     workflow.__postdesc__ = """
 
@@ -548,7 +551,7 @@ to workflows in *OncoPrep*'s documentation]\
         omp_nthreads=omp_nthreads,
         skip_registration=run_segmentation,
     )
-    
+
     workflow.connect([
         (inputnode, anat_preproc_wf, [('subjects_dir', 'inputnode.subjects_dir')]),
         (bidssrc, bids_info, [(('t1w', fix_multi_T1w_source_name), 'in_file')]),
@@ -597,7 +600,7 @@ to workflows in *OncoPrep*'s documentation]\
                 seg_cache_dir=seg_cache_dir,
                 name='anat_seg_wf',
             )
-        
+
         # Datasink for tumor segmentation output
         ds_tumor_seg_wf = init_ds_tumor_seg_wf(
             output_dir=str(output_dir),
@@ -856,7 +859,6 @@ to preserve discrete label values.
             ]),
         ])
 
-
     # Radiomics feature extraction workflow (optional, requires segmentation)
     if run_radiomics and run_segmentation:
         try:
@@ -871,7 +873,11 @@ to preserve discrete label values.
             run_radiomics = False
 
     if run_radiomics and run_segmentation:
-        LOGGER.info('ANAT Stage 8: Initializing radiomics feature extraction workflow (--run-radiomics=True requires --run-segmentation=True)')
+        LOGGER.info(
+            'ANAT Stage 8: Initializing radiomics feature extraction '
+            'workflow (--run-radiomics=True requires '
+            '--run-segmentation=True)'
+        )
         anat_radiomics_wf = init_anat_radiomics_wf(
             output_dir=str(output_dir),
             name='anat_radiomics_wf',
@@ -1033,6 +1039,7 @@ to preserve discrete label values.
     ])
 
     return workflow
+
 
 def _prefix(subject_id, session_id):
     if not subject_id.startswith('sub-'):

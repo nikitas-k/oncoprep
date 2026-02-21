@@ -13,17 +13,17 @@ LOGGER = get_logger(__name__)
 def load_bids_filter_file(filter_file: Path) -> dict:
     """
     Load BIDS filter file (JSON format).
-    
+
     Parameters
     ----------
     filter_file : Path
         Path to BIDS filter JSON file
-        
+
     Returns
     -------
     dict
         Filter specification
-        
+
     Example
     -------
     Filter file content (filter.json):
@@ -49,14 +49,14 @@ def load_bids_filter_file(filter_file: Path) -> dict:
 def matches_filter(series_name: str, filters: dict) -> bool:
     """
     Check if series name matches filter criteria.
-    
+
     Parameters
     ----------
     series_name : str
         DICOM series name/description
     filters : dict
         Filter specification
-        
+
     Returns
     -------
     bool
@@ -64,9 +64,9 @@ def matches_filter(series_name: str, filters: dict) -> bool:
     """
     if not filters:
         return True
-    
+
     upper_name = series_name.upper()
-    
+
     # Check include criteria (suffix)
     suffix_filter = filters.get('suffix', [])
     if suffix_filter:
@@ -76,7 +76,7 @@ def matches_filter(series_name: str, filters: dict) -> bool:
         elif isinstance(suffix_filter, str):
             if suffix_filter.upper() not in upper_name:
                 return False
-    
+
     # Check exclude criteria
     exclude = filters.get('exclude', {})
     for key, values in exclude.items():
@@ -86,14 +86,14 @@ def matches_filter(series_name: str, filters: dict) -> bool:
         elif isinstance(values, str):
             if values.upper() in upper_name:
                 return False
-    
+
     return True
 
 
 def create_example_filter_file(output_path: Path) -> None:
     """
     Create an example BIDS filter file.
-    
+
     Parameters
     ----------
     output_path : Path
@@ -111,8 +111,8 @@ def create_example_filter_file(output_path: Path) -> None:
             "notes": "These are often localizer/reference images"
         }
     }
-    
+
     with open(output_path, 'w') as f:
         json.dump(example_filter, f, indent=2)
-    
+
     LOGGER.info(f"Created example BIDS filter file: {output_path}")

@@ -24,7 +24,7 @@ try:
         """DerivativesDataSink with out_path_base set to 'oncoprep'."""
         out_path_base = 'oncoprep'
         _file_patterns = _ONCOPREP_EXTRA_PATTERNS + BIDS_DERIV_PATTERNS
-    
+
     __all__ = ['DerivativesDataSink']
 except ImportError:
     __all__ = []
