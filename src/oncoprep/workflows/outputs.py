@@ -1871,4 +1871,6 @@ def _read_json(in_file):
 
 
 def _pop(in_list):
-    return in_list[0]
+    if isinstance(in_list, (list, tuple)):
+        return in_list[0]
+    return in_list
