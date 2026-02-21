@@ -460,6 +460,7 @@ VALIDATION_REPORT.md
 src/oncoprep/.DS_Store
 *examples
 *nii.gz
+!src/oncoprep/data/atlas_masks/**/*.nii.gz
 copilot-instructions.md
 *.venv*
 *build
