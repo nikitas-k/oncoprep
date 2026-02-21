@@ -54,11 +54,6 @@ vasari = [
 mriqc = [
     "mriqc>=24.0",
 ]
-# torch = [
-#     "torch",
-#     "torchvision",
-#     "torchaudio",
-# ]
 
 dev = [
   "pytest>=7.4",
