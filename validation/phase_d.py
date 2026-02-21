@@ -68,6 +68,9 @@ class PhaseDResults:
     implausible_jump_rate: float = 0.0
     implausible_cases: List[Dict[str, Any]] = field(default_factory=list)
 
+    # D3: Radiomic feature stability (native-first vs atlas-first)
+    radiomics_stability: Optional[Dict[str, Any]] = None
+
     # Per-case records
     cases: List[CaseVolumeRecord] = field(default_factory=list)
 
@@ -238,6 +241,8 @@ def run_phase_d(
     gt_pattern: str = "*_dseg.nii.gz",
     regions: Optional[Dict[str, List[int]]] = None,
     max_cases: Optional[int] = None,
+    comparator_dir: Optional[Path] = None,
+    radiomics_pattern: str = "**/radiomics_features.json",
 ) -> PhaseDResults:
     """Execute Phase D on a dataset.
 
@@ -247,6 +252,12 @@ def run_phase_d(
         Prediction and ground truth roots.
     dataset_key : str
         Dataset identifier.
+    comparator_dir : Path, optional
+        Root of the atlas-first (comparator) derivatives. When provided,
+        radiomic feature stability analysis (D3) is performed comparing
+        native-first (pred_dir) against atlas-first (comparator_dir).
+    radiomics_pattern : str
+        Glob pattern for locating per-subject radiomics JSON files.
 
     Returns
     -------
@@ -309,6 +320,47 @@ def run_phase_d(
         ) * len(regions)
         results.implausible_jump_rate = n_jumps / max(total_transitions, 1)
 
+    # --- D3: Radiomic feature stability (optional, requires comparator) ---
+    if comparator_dir is not None:
+        try:
+            from .radiomics_stability import (
+                compute_radiomics_stability,
+                save_radiomics_stability_results,
+            )
+
+            rad_results = compute_radiomics_stability(
+                native_dir=pred_dir,
+                atlas_dir=comparator_dir,
+                dataset_key=dataset_key,
+                radiomics_pattern=radiomics_pattern,
+                max_cases=max_cases,
+            )
+            # Store summary in PhaseDResults
+            results.radiomics_stability = {
+                "n_subjects": rad_results.n_subjects,
+                "n_features_total": rad_results.n_features_total,
+                "n_features_stable": rad_results.n_features_stable,
+                "pct_features_stable": rad_results.pct_features_stable,
+                "class_summary": rad_results.class_summary,
+                "wilcoxon_statistic": rad_results.wilcoxon_statistic,
+                "wilcoxon_p_value": rad_results.wilcoxon_p_value,
+                "wilcoxon_fdr_rejected": rad_results.wilcoxon_fdr_rejected,
+            }
+
+            # Also save detailed per-feature results separately
+            rad_out = get_phase_dir(
+                pred_dir.parent if pred_dir.name == "oncoprep" else pred_dir,
+                "D",
+            ) / f"radiomics_stability_{dataset_key}.json"
+            save_radiomics_stability_results(rad_results, rad_out)
+        except Exception as exc:
+            # Graceful degradation — radiomics stability is a secondary endpoint
+            import warnings
+            warnings.warn(
+                f"D3 radiomics stability analysis failed: {exc}",
+                stacklevel=2,
+            )
+
     return results
 
 
@@ -329,6 +381,7 @@ def save_phase_d_results(results: PhaseDResults, output_path: Path) -> None:
         "n_implausible_jumps": results.n_implausible_jumps,
         "implausible_jump_rate": results.implausible_jump_rate,
         "implausible_cases": results.implausible_cases,
+        "radiomics_stability": results.radiomics_stability,
         "cases": [
             {
                 "subject": c.subject,
@@ -359,6 +412,9 @@ def main() -> None:
     parser.add_argument("--results-dir", type=Path, default=Path("validation_results"))
     parser.add_argument("--pred-pattern", default="*_dseg.nii.gz")
     parser.add_argument("--gt-pattern", default="*_dseg.nii.gz")
+    parser.add_argument("--comparator-dir", type=Path, default=None,
+                        help="Atlas-first comparator derivatives root (enables D3 radiomics stability)")
+    parser.add_argument("--radiomics-pattern", default="**/radiomics_features.json")
     parser.add_argument("--max-cases", type=int, default=None)
 
     args = parser.parse_args()
@@ -371,6 +427,8 @@ def main() -> None:
         pred_pattern=args.pred_pattern,
         gt_pattern=args.gt_pattern,
         max_cases=args.max_cases,
+        comparator_dir=args.comparator_dir,
+        radiomics_pattern=args.radiomics_pattern,
     )
 
     out_path = get_phase_dir(args.results_dir, "D") / f"phase_d_{args.dataset}.json"
@@ -394,6 +452,18 @@ def main() -> None:
         print(f"\n  Longitudinal plausibility ({results.n_patients_longitudinal} patients):")
         print(f"    Implausible jumps: {results.n_implausible_jumps}")
         print(f"    Jump rate: {results.implausible_jump_rate:.1%}")
+
+    if results.radiomics_stability is not None:
+        rs = results.radiomics_stability
+        print("\n  Radiomic feature stability (D3):")
+        print(f"    Subjects matched: {rs['n_subjects']}")
+        print(f"    Features evaluated: {rs['n_features_total']}")
+        print(f"    Highly stable: {rs['n_features_stable']} "
+              f"({rs['pct_features_stable']:.1f}%)")
+        w_p = rs.get("wilcoxon_p_value")
+        if w_p is not None:
+            sig = "significant" if rs.get("wilcoxon_fdr_rejected") else "not significant"
+            print(f"    Wilcoxon CV native vs atlas: p = {w_p:.4f} ({sig})")
 
     print(f"\n  Results saved to: {out_path}")
 

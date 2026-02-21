@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "oncoprep"
-version = "0.2.2"
+version = "0.2.3"
 description = "A toolbox for analysing neuro-oncology MRI"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -16,7 +16,7 @@ classifiers = [
 ]
 dependencies = [
   "acres",
-  "numpy<2",
+  "numpy",
   "nipype>=1.8",
   "nibabel>=5.1",
   "nilearn>=0.10",
@@ -34,7 +34,9 @@ dependencies = [
   "psutil>=5.4",
   "torch",
   "torchvision",
-  "torchaudio"
+  "torchaudio",
+  "huggingface_hub",
+  "nnInteractive>=1.0"
 ]
 
 [project.optional-dependencies]
@@ -42,7 +44,7 @@ hd-bet = [
     "hd-bet",
 ]
 radiomics = [
-    "pyradiomics==3.0.1",
+    "pyradiomics @ git+https://github.com/AIM-Harvard/pyradiomics.git",
     "neuroCombat>=0.2.12",
 ]
 vasari = [

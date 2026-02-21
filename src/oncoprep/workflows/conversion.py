@@ -4,18 +4,14 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
-from nipype import logging
 from nipype.interfaces import utility as niu
 from nipype.pipeline import engine as pe
 from niworkflows.engine.workflows import LiterateWorkflow as Workflow
 
 from oncoprep.interfaces.bids import (
     collect_bids_data,
-    get_anatomical_files,
-    get_functional_files,
-    get_subjects_sessions,
     validate_anatomical_coverage,
     validate_bids_dataset,
     ConversionPlan,
@@ -124,7 +120,6 @@ __all__ = [
     'init_bids_validation_wf',
     'init_bids_single_subject_convert_wf',
     'init_bids_convert_wf',
-    'organize_bids_dir',
 ]
 
 
@@ -363,7 +358,7 @@ def init_bids_convert_wf(
     dicom_root = Path(dicom_dir)
     bids_root = Path(bids_dir)
 
-    LOGGER.info(f"Initializing comprehensive DICOM to BIDS conversion")
+    LOGGER.info("Initializing comprehensive DICOM to BIDS conversion")
     LOGGER.info(f"  Input DICOM root: {dicom_root}")
     LOGGER.info(f"  Output BIDS root: {bids_root}")
 
@@ -451,13 +446,12 @@ def init_bids_convert_wf(
             'Funding': [],
             'EthicsApprovals': [],
             'ReferencesAndLinks': [],
-            'DatasetType': 'raw',
             'KeyWords': ['oncology', 'brain', 'MRI'],
         }
 
         with dataset_desc_path.open('w') as f:
             json.dump(dataset_description, f, indent=2)
-        LOGGER.info(f"Created dataset_description.json")
+        LOGGER.info("Created dataset_description.json")
 
     # Create input node
     inputnode = pe.Node(

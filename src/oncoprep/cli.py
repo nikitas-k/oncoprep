@@ -15,6 +15,83 @@ from time import strftime
 from typing import List, Optional
 
 
+def _log_nodes_cb(node, status):
+    """Patched version of nipype.utils.profiler.log_nodes_cb.
+
+    The upstream callback crashes on MapNodes because ``node.result.runtime``
+    is a *list* of runtime objects, not a single object.  This wrapper
+    handles both cases (single runtime and list of runtimes).
+
+    See: https://github.com/nipy/nipype/issues/3585
+    """
+    if status != 'end':
+        return
+
+    import json as _json
+    import logging as _logging
+
+    try:
+        runtime = node.result.runtime
+    except (FileNotFoundError, AttributeError, Exception):
+        # Node failed or has no result file — log what we can and return
+        status_dict = {
+            'name': node.name,
+            'id': node._id,
+            'start': None,
+            'finish': None,
+            'duration': None,
+            'runtime_threads': 'N/A',
+            'runtime_memory_gb': 'N/A',
+            'estimated_memory_gb': node.mem_gb,
+            'num_threads': node.n_procs,
+            'error': True,
+        }
+        _logging.getLogger('callback').debug(_json.dumps(status_dict))
+        return
+
+    # MapNode results have a list of per-sub-node runtimes
+    if isinstance(runtime, list):
+        if not runtime:
+            return
+        # Use the first sub-node for start, last for finish, sum durations
+        start = getattr(runtime[0], 'startTime', None)
+        finish = getattr(runtime[-1], 'endTime', None)
+        duration = sum(
+            getattr(rt, 'duration', 0) or 0 for rt in runtime
+        )
+        cpu_percent = max(
+            (getattr(rt, 'cpu_percent', 0) or 0 for rt in runtime),
+            default='N/A',
+        )
+        mem_peak_gb = max(
+            (getattr(rt, 'mem_peak_gb', 0) or 0 for rt in runtime),
+            default='N/A',
+        )
+    else:
+        start = getattr(runtime, 'startTime', None)
+        finish = getattr(runtime, 'endTime', None)
+        duration = getattr(runtime, 'duration', None)
+        cpu_percent = getattr(runtime, 'cpu_percent', 'N/A')
+        mem_peak_gb = getattr(runtime, 'mem_peak_gb', 'N/A')
+
+    status_dict = {
+        'name': node.name,
+        'id': node._id,
+        'start': start,
+        'finish': finish,
+        'duration': duration,
+        'runtime_threads': cpu_percent,
+        'runtime_memory_gb': mem_peak_gb,
+        'estimated_memory_gb': node.mem_gb,
+        'num_threads': node.n_procs,
+    }
+
+    if status_dict['start'] is None or status_dict['finish'] is None:
+        status_dict['error'] = True
+
+    _logging.getLogger('callback').debug(_json.dumps(status_dict))
+
+
 def main():
     """Set an entrypoint for oncoprep."""
     # Handle --version early (before heavy imports that trigger TemplateFlow indexing)
@@ -560,7 +637,6 @@ def build_opts(opts):
     """Trigger a new process that builds the workflow graph, based on the input options."""
     import gc
 
-    from nipype import config as ncfg
     from nipype import logging as nlogging
     
     set_start_method('forkserver', force=True)
@@ -626,7 +702,6 @@ def build_opts(opts):
         bids_dir = retval['bids_dir']
         output_dir = retval['output_dir']
         subject_session_list = retval['subject_session_list']
-        run_uuid = retval['run_uuid']
         retcode = retval['return_code']
     
     if oncoprep_wf is None:
@@ -706,7 +781,6 @@ def build_workflow(opts, retval):
 
     from bids.layout import BIDSLayout, Query
     from nipype import config as ncfg
-    from nipype import logging as nlogging
     from niworkflows.utils.bids import collect_participants
 
     from oncoprep.workflows.base import init_oncoprep_wf
@@ -714,7 +788,7 @@ def build_workflow(opts, retval):
     logger = logging.getLogger('nipype.workflow')
     
     INIT_MSG = """
-    Running OncoPrep version 0.1.0:
+    Running OncoPrep version {version} with the following configuration:
       * BIDS dataset path: {bids_dir}.
       * Participants & Sessions: {subject_session_list}.
       * Run identifier: {uuid}.
@@ -753,7 +827,7 @@ def build_workflow(opts, retval):
         else:
             subject_session_list.append((subject, sessions))
     
-    bids_filters = json.loads(opts.bids_filter_file.read_text()) if opts.bids_filter_file else None
+    _bids_filters = json.loads(opts.bids_filter_file.read_text()) if opts.bids_filter_file else None  # noqa: F841
     
     # Load plugin settings
     if opts.use_plugin is not None:
@@ -827,8 +901,7 @@ def build_workflow(opts, retval):
     
     if opts.resource_monitor:
         ncfg.enable_resource_monitor()
-        from nipype.utils.profiler import log_nodes_cb
-        plugin_settings['plugin_args']['status_callback'] = log_nodes_cb
+        plugin_settings['plugin_args']['status_callback'] = _log_nodes_cb
     
     retval['return_code'] = 0
     retval['plugin_settings'] = plugin_settings
@@ -851,9 +924,12 @@ def build_workflow(opts, retval):
         # Fall through to build the workflow below so visit_desc() works
     
     if not opts.reports_only:
+        from oncoprep import __version__
+
         logger.log(
             25,
             INIT_MSG.format(
+                version=__version__,
                 bids_dir=bids_dir,
                 subject_session_list=_pprint_subses(subject_session_list),
                 uuid=run_uuid,

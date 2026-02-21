@@ -16,7 +16,6 @@
 # limitations under the License.
 """Nipype interfaces for MRIQC (MRI Quality Control) integration."""
 
-from typing import Optional
 
 from nipype.interfaces.base import (
     CommandLine,

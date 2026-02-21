@@ -64,13 +64,21 @@ OncoPrep is structured as a three-layer Nipype workflow system following [niprep
 
 ```
 Participant stage (per-subject):
-  BIDS input ─► Anatomical WF ─► registered T1w/T1ce/T2w/FLAIR
+  BIDS input ─► Anatomical WF ─► registered T1w/T1ce/T2w/FLAIR (native space)
                    │
-                   ├──► Segmentation WF ─► N tumor predictions
+                   ├──► Segmentation WF ─► tumor labels (native space)
                    │         │
-                   │         └──► Fusion WF ─► consensus segmentation
+                   │         ├──► Fusion WF ─► consensus segmentation
+                   │         │
+                   │         └──► Radiomics WF ─► features JSON + report
+                   │                  (native-space mask, histogram norm + SUSAN)
+                   │
+                   ├──► Deferred Template Registration
+                   │         (ANTs SyN with dilated tumor mask as -x exclusion)
+                   │         │
+                   │         └──► Resample tumor seg to template space
                    │                  │
-                   │                  └──► Radiomics WF ─► features JSON + report
+                   │                  └──► VASARI WF ─► features + radiology report
                    │
                    └──► DerivativesDataSink ─► BIDS-compliant derivatives/
 

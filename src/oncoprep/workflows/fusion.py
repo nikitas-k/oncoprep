@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import itertools
 import logging
-import math
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional
 
 import nibabel as nb
 import numpy as np
@@ -171,7 +170,7 @@ def _multiclass_majority_vote(
     result = np.zeros(template.shape, dtype=np.int16)
 
     # Remove background label (0) from processing
-    fg_labels = [l for l in labels if l != 0]
+    fg_labels = [lbl for lbl in labels if lbl != 0]
 
     # Process each label
     for label in reversed(fg_labels):  # Reverse order to avoid overwriting
@@ -292,7 +291,7 @@ def _simple_fusion(
     result = np.zeros(template.shape, dtype=np.int16)
 
     # Remove background label
-    fg_labels = [l for l in labels if l != 0]
+    fg_labels = [lbl for lbl in labels if lbl != 0]
     backup_weights = weights.copy()
 
     # Process each label
@@ -554,11 +553,8 @@ def _fuse_segmentations(
         Path to fused segmentation file
     """
     import itertools
-    import logging
-    import math
     from pathlib import Path
 
-    import nibabel as nb
     import numpy as np
 
     LOGGER = logging.getLogger('nipype.workflow')
@@ -618,7 +614,7 @@ def _fuse_segmentations(
 
         template = candidates[0]
         result = np.zeros(template.shape, dtype=np.int16)
-        fg_labels = [l for l in labels if l != 0]
+        fg_labels = [lbl for lbl in labels if lbl != 0]
 
         for label in reversed(fg_labels):
             label_votes = np.zeros(template.shape, dtype=np.float32)
@@ -952,7 +948,6 @@ def init_anat_seg_fuse_wf(
     Berger, C. et al. - BraTS Toolkit (Fusionator class)
     Warfield, S.K. et al. - STAPLE algorithm inspiration
     """
-    from pathlib import Path
 
     from niworkflows.engine.workflows import LiterateWorkflow
 

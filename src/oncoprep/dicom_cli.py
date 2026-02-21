@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 import sys
 from argparse import ArgumentParser, RawTextHelpFormatter
 from pathlib import Path
@@ -186,7 +185,6 @@ def run_single_subject(opts) -> int:
 
 def run_batch(opts) -> int:
     """Run batch conversion."""
-    from glob import glob
     
     LOGGER.info(f"Starting batch conversion from {opts.dicom_dir}")
     LOGGER.info(f"Pattern: {opts.pattern}, Processes: {opts.n_procs}")
@@ -201,7 +199,6 @@ def run_batch(opts) -> int:
         LOGGER.warning(f"Could not create dataset_description.json: {e}")
     
     # Find all matching subdirectories
-    pattern_path = opts.dicom_dir / opts.pattern
     subject_dirs = sorted([d for d in opts.dicom_dir.glob(opts.pattern) if d.is_dir()])
     
     if not subject_dirs:
@@ -257,7 +254,7 @@ def run_batch(opts) -> int:
     # Print summary
     total = successful + failed
     LOGGER.info(f"\n{'='*50}")
-    LOGGER.info(f"Batch Conversion Summary")
+    LOGGER.info("Batch Conversion Summary")
     LOGGER.info(f"{'='*50}")
     LOGGER.info(f"Total subjects:     {total}")
     LOGGER.info(f"Successful:         {successful}")

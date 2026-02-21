@@ -4,7 +4,7 @@ import json
 import os
 import subprocess
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Optional
 
 from nipype import Workflow, logging as nipype_logging
 from nipype.interfaces import utility as niu
@@ -14,14 +14,9 @@ from niworkflows.engine.workflows import LiterateWorkflow
 from oncoprep.utils.logging import get_logger
 from oncoprep.utils.segment import (
     check_gpu_available,
-    check_docker_image,
-    pull_docker_image,
     ensure_docker_images,
     detect_container_runtime,
-    _sif_path_for_image,
     _default_seg_cache_dir,
-    BRATS_OLD_LABELS,
-    BRATS_NEW_LABELS,
 )
 
 LOGGER = get_logger(__name__)
@@ -65,7 +60,6 @@ def _prepare_segmentation_inputs(
     work_dir : str
         Path to working directory containing prepared files
     """
-    import os
     import numpy as np
     import nibabel as nb
     import logging
@@ -198,9 +192,7 @@ def _run_segmentation_container(
         Path to results directory in the current node's working directory.
         This directory persists even when upstream nodes are cache-invalidated.
     """
-    import os
     import platform
-    import subprocess
     import logging
     LOGGER = logging.getLogger('nipype.workflow')
 
@@ -383,7 +375,6 @@ def _find_segmentation_result(results_dir, container_id, _wait=None):
     str or None
         Path to segmentation file (in node's own cwd), or None if not found
     """
-    import os
     import glob
     import shutil
     import logging
@@ -544,7 +535,6 @@ def _convert_to_old_labels(seg_file):
     str or None
         Path to converted segmentation with old labels, or None if input is None
     """
-    import os
     import nibabel as nib
     import numpy as np
     from pathlib import Path
@@ -606,7 +596,6 @@ def _convert_to_new_labels(seg_file):
     str or None
         Path to converted segmentation with new labels, or None if input is None
     """
-    import os
     import nibabel as nib
     import numpy as np
     from pathlib import Path
@@ -734,7 +723,6 @@ def init_anat_seg_wf(
         Nipype workflow for tumor segmentation
     """
     from pathlib import Path
-    from niworkflows.engine.workflows import LiterateWorkflow
 
     output_dir = Path(output_dir)
     workflow = LiterateWorkflow(name=name)
@@ -749,8 +737,6 @@ def init_anat_seg_wf(
                 't2w_preproc',    # Preprocessed T2w
                 'flair_preproc',  # Preprocessed FLAIR
                 'brain_mask',     # Brain mask (optional reference)
-                'anat2std_xfm',   # Native → template transform (for resampling seg)
-                'std_reference',  # Template-space reference image (ApplyTransforms ref)
             ]
         ),
         name='inputnode',
@@ -760,14 +746,12 @@ def init_anat_seg_wf(
     # tumor_seg: raw model output
     # tumor_seg_old: old BraTS labels (1=NCR, 2=ED, 3=ET, 4=RC)
     # tumor_seg_new: new derived labels (1=ET, 2=TC, 3=WT, 4=NETC, 5=SNFH, 6=RC)
-    # tumor_seg_std: old BraTS labels resampled to template space
     outputnode = pe.Node(
         niu.IdentityInterface(
             fields=[
                 'tumor_seg',      # Raw tumor segmentation map
                 'tumor_seg_old',  # Old BraTS labels
                 'tumor_seg_new',  # New derived labels
-                'tumor_seg_std',  # Old BraTS labels in template space
             ]
         ),
         name='outputnode',
@@ -821,7 +805,6 @@ def init_anat_seg_wf(
                 ('seg_file', 'tumor_seg'),
                 ('seg_file', 'tumor_seg_old'),
                 ('seg_file', 'tumor_seg_new'),
-                ('seg_file', 'tumor_seg_std'),
             ]),
         ])
 
@@ -968,6 +951,14 @@ def init_anat_seg_wf(
         name="prepare_inputs",
     )
     # Note: fileformats_config is set per-model below
+
+    # Buffer node captures `tumor_seg_old` from whichever segmentation
+    # branch is taken (custom / default / ensemble), providing a single
+    # convergence point for downstream connections.
+    seg_old_buffer = pe.Node(
+        niu.IdentityInterface(fields=['tumor_seg_old']),
+        name='seg_old_buffer',
+    )
 
     if model_path is not None:
         # Use custom segmentation model (single model, no fusion)
@@ -1370,43 +1361,5 @@ Multi-modal MRI inputs (T1w, T1ce, T2w, FLAIR) were used for segmentation.
 - Label 6: Resection Cavity (RC, optional)
 
 """
-
-    # -------------------------------------------------------------------
-    # Resample tumor segmentation to template space
-    # Uses the anat2std_xfm transform from anatomical preprocessing and
-    # nearest-neighbor interpolation to preserve discrete label values.
-    #
-    # A buffer node captures `tumor_seg_old` from whichever segmentation
-    # branch was taken, feeding both the native-space outputnode field
-    # and the resampling node (avoids an outputnode read-back deadlock).
-    # -------------------------------------------------------------------
-    from nipype.interfaces.ants import ApplyTransforms
-
-    seg_old_buffer = pe.Node(
-        niu.IdentityInterface(fields=['tumor_seg_old']),
-        name='seg_old_buffer',
-    )
-
-    resample_seg_to_std = pe.Node(
-        ApplyTransforms(
-            interpolation='NearestNeighbor',
-            float=True,
-        ),
-        name='resample_seg_to_std',
-        mem_gb=2,
-    )
-
-    workflow.connect([
-        (seg_old_buffer, resample_seg_to_std, [
-            ('tumor_seg_old', 'input_image'),
-        ]),
-        (inputnode, resample_seg_to_std, [
-            ('anat2std_xfm', 'transforms'),
-            ('std_reference', 'reference_image'),
-        ]),
-        (resample_seg_to_std, outputnode, [
-            ('output_image', 'tumor_seg_std'),
-        ]),
-    ])
 
     return workflow

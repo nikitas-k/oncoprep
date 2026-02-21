@@ -22,7 +22,6 @@ workflow::
 from __future__ import annotations
 
 import warnings
-from typing import Optional
 
 from nipype.interfaces import utility as niu
 from nipype.pipeline import engine as pe

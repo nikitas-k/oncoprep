@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import subprocess
 from pathlib import Path
 from typing import Optional
 
@@ -93,14 +92,14 @@ def print_validation_report(bids_dir: Path, validation_result: dict) -> None:
         Validation result from validate_bids_dataset()
     """
     print(f"\n{'=' * 70}")
-    print(f"BIDS Validation Report")
+    print("BIDS Validation Report")
     print(f"{'=' * 70}")
     print(f"Dataset: {bids_dir}")
     
     if validation_result['valid']:
-        print(f"Status: ✓ VALID")
+        print("Status: ✓ VALID")
     else:
-        print(f"Status: ✗ INVALID")
+        print("Status: ✗ INVALID")
     
     issues = validation_result.get('issues', {})
     

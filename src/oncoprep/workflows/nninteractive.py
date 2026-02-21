@@ -195,8 +195,6 @@ HuggingFace.  No Docker containers or BraTS-specific fine-tuning were required.
                 't1ce',
                 't2w',
                 'flair',
-                'anat2std_xfm',   # Native → template transform (for resampling seg)
-                'std_reference',  # Template-space reference image (ApplyTransforms ref)
             ],
         ),
         name='inputnode',
@@ -204,7 +202,7 @@ HuggingFace.  No Docker containers or BraTS-specific fine-tuning were required.
 
     outputnode = pe.Node(
         niu.IdentityInterface(
-            fields=['tumor_seg', 'tumor_seg_old', 'tumor_seg_new', 'tumor_seg_std'],
+            fields=['tumor_seg', 'tumor_seg_old', 'tumor_seg_new'],
         ),
         name='outputnode',
     )
@@ -241,18 +239,6 @@ HuggingFace.  No Docker containers or BraTS-specific fine-tuning were required.
         name='convert_to_new_labels',
     )
 
-    # Resample old-BraTS-label segmentation to template space
-    from nipype.interfaces.ants import ApplyTransforms
-
-    resample_seg_to_std = pe.Node(
-        ApplyTransforms(
-            interpolation='NearestNeighbor',
-            float=True,
-        ),
-        name='resample_seg_to_std',
-        mem_gb=2,
-    )
-
     # Wire up
     workflow.connect([
         # Feed raw images — nnInteractive was trained on unprocessed data.
@@ -270,13 +256,6 @@ HuggingFace.  No Docker containers or BraTS-specific fine-tuning were required.
         (seg_node, convert_new, [('tumor_seg', 'seg_file')]),
         (convert_old, outputnode, [('old_labels_file', 'tumor_seg_old')]),
         (convert_new, outputnode, [('new_labels_file', 'tumor_seg_new')]),
-        # Resample seg to template space
-        (convert_old, resample_seg_to_std, [('old_labels_file', 'input_image')]),
-        (inputnode, resample_seg_to_std, [
-            ('anat2std_xfm', 'transforms'),
-            ('std_reference', 'reference_image'),
-        ]),
-        (resample_seg_to_std, outputnode, [('output_image', 'tumor_seg_std')]),
     ])
 
     return workflow

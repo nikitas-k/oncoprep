@@ -30,67 +30,67 @@ except ImportError:
     __all__ = []
 
 try:
-    from .cifti import GenerateDScalar
+    from .cifti import GenerateDScalar  # noqa: F401
     __all__.append('GenerateDScalar')
 except ImportError:
     pass
 
 try:
-    from .freesurfer import MakeMidthickness, MRIsConvertData, ReconAll
+    from .freesurfer import MakeMidthickness, MRIsConvertData, ReconAll  # noqa: F401
     __all__.extend(['ReconAll', 'MRIsConvertData', 'MakeMidthickness'])
 except ImportError:
     pass
 
 try:
-    from .fsl import FAST
+    from .fsl import FAST  # noqa: F401
     __all__.append('FAST')
 except ImportError:
     pass
 
 try:
-    from .gifti import MetricMath
+    from .gifti import MetricMath  # noqa: F401
     __all__.append('MetricMath')
 except ImportError:
     pass
 
 try:
-    from .msm import MSM
+    from .msm import MSM  # noqa: F401
     __all__.append('MSM')
 except ImportError:
     pass
 
 try:
-    from .reports import SubjectSummary, AboutSummary, FSSurfaceReport
+    from .reports import SubjectSummary, AboutSummary, FSSurfaceReport  # noqa: F401
     __all__.extend(['SubjectSummary', 'AboutSummary', 'FSSurfaceReport'])
 except ImportError:
     pass
 
 try:
-    from .radiomics import HistogramNormalization, PyRadiomicsFeatureExtraction
+    from .radiomics import HistogramNormalization, PyRadiomicsFeatureExtraction  # noqa: F401
     __all__.extend(['HistogramNormalization', 'PyRadiomicsFeatureExtraction'])
 except ImportError:
     pass
 
 try:
-    from .mriqc import MRIQC, MRIQCGroup, check_mriqc_available
+    from .mriqc import MRIQC, MRIQCGroup, check_mriqc_available  # noqa: F401
     __all__.extend(['MRIQC', 'MRIQCGroup', 'check_mriqc_available'])
 except ImportError:
     pass
 
 try:
-    from .surf import NormalizeSurf, FixGiftiMetadata, AggregateSurfaces, MakeRibbon
+    from .surf import NormalizeSurf, FixGiftiMetadata, AggregateSurfaces, MakeRibbon  # noqa: F401
     __all__.extend(['NormalizeSurf', 'FixGiftiMetadata', 'AggregateSurfaces', 'MakeRibbon'])
 except ImportError:
     pass
 
 try:
-    from .templateflow import TemplateFlowSelect, TemplateDesc
+    from .templateflow import TemplateFlowSelect, TemplateDesc  # noqa: F401
     __all__.extend(['TemplateFlowSelect', 'TemplateDesc'])
 except ImportError:
     pass
 
 try:
-    from .workbench import (
+    from .workbench import (  # noqa: F401
         CreateSignedDistanceVolume,
         SurfaceAffineRegression,
         SurfaceApplyAffine,
@@ -112,7 +112,7 @@ except ImportError:
     pass
 
 try:
-    from .bids import (
+    from .bids import (  # noqa: F401
         validate_bids_dataset,
         collect_bids_data,
         get_anatomical_files,

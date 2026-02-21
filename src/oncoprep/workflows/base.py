@@ -60,6 +60,40 @@ def _pick_first(val):
         return val[0] if val else None
     return val
 
+
+def _create_dilated_tumor_mask(tumor_seg, dilation_radius=4):
+    """Binarize whole-tumor segmentation and dilate for cost-function masking.
+
+    Creates a binary mask (any label > 0) from the tumor segmentation,
+    then morphologically dilates it by *dilation_radius* voxels using a
+    6-connected structuring element.  The dilated mask is used as a
+    cost-function exclusion mask (-x) for ANTs SyN registration so that
+    pathological tissue does not distort the diffeomorphic warp.
+    """
+    import nibabel as nib
+    import numpy as np
+    from pathlib import Path
+    from scipy.ndimage import binary_dilation, generate_binary_structure
+
+    img = nib.load(tumor_seg)
+    data = np.asanyarray(img.dataobj)
+
+    # Binarize: any non-zero label is tumor
+    binary_mask = (data > 0).astype(np.uint8)
+
+    # Dilate with a 6-connected structuring element
+    struct = generate_binary_structure(3, 1)
+    dilated = binary_dilation(
+        binary_mask, structure=struct, iterations=dilation_radius,
+    )
+
+    out_path = str(Path.cwd() / 'dilated_tumor_mask.nii.gz')
+    nib.save(
+        nib.Nifti1Image(dilated.astype(np.uint8), img.affine, img.header),
+        out_path,
+    )
+    return out_path
+
 # Custom BIDS queries for OncoPrep (adds t1ce for neuro-oncology)
 # Uses ceagent entity per BIDS spec: T1ce = T1w with contrast agent (e.g., gadolinium)
 ONCOPREP_BIDS_QUERIES = copy.deepcopy(DEFAULT_BIDS_QUERIES)
@@ -412,6 +446,7 @@ def init_single_subject_wf(
 Preprocessing of anatomical data for subject {subject_id}
 was performed using OncoPrep {__version__}, which is based on Nipype {nipype_ver}
 (@nipype1; @nipype2; RRID:SCR_002502).
+{'When tumor segmentation was enabled, template registration was deferred until after segmentation so that the whole-tumor mask could serve as a cost-function exclusion region for diffeomorphic registration.' if run_segmentation else ''}
 """
     workflow.__postdesc__ = """
 
@@ -488,7 +523,10 @@ to workflows in *OncoPrep*'s documentation]\
         run_without_submitting=True,
     )
 
-    # preprocessing of anat (includes registration to MNI)
+    # Anatomical preprocessing: N4, skull-strip, co-registration.
+    # When segmentation is enabled, template registration is deferred
+    # until after segmentation so the tumor mask can be used as a
+    # cost-function exclusion mask for topology-preserving registration.
     anat_preproc_wf = init_anat_preproc_wf(
         bids_dir=bids_dir,
         output_dir=output_dir,
@@ -508,6 +546,7 @@ to workflows in *OncoPrep*'s documentation]\
         skull_strip_backend=skull_strip_backend,
         registration_backend=registration_backend,
         omp_nthreads=omp_nthreads,
+        skip_registration=run_segmentation,
     )
     
     workflow.connect([
@@ -574,13 +613,12 @@ to workflows in *OncoPrep*'s documentation]\
             workflow.connect([
                 (bidssrc, anat_seg_wf, [
                     (('t1w', fix_multi_T1w_source_name), 'inputnode.source_file'),
-                    (('t1w', fix_multi_T1w_source_name), 'inputnode.t1w'),
+                    (('t1w', _pick_first), 'inputnode.t1w'),
                     (('t1ce', _pick_first), 'inputnode.t1ce'),
                     (('t2w', _pick_first), 'inputnode.t2w'),
                 ]),
                 (anat_preproc_wf, anat_seg_wf, [
                     ('outputnode.flair_preproc', 'inputnode.flair'),
-                    ('outputnode.anat2std_xfm', 'inputnode.anat2std_xfm'),
                 ]),
             ])
         else:
@@ -595,17 +633,15 @@ to workflows in *OncoPrep*'s documentation]\
                     ('outputnode.t2w_preproc', 'inputnode.t2w_preproc'),
                     ('outputnode.flair_preproc', 'inputnode.flair_preproc'),
                     ('outputnode.t1w_mask', 'inputnode.brain_mask'),
-                    ('outputnode.anat2std_xfm', 'inputnode.anat2std_xfm'),
                 ]),
             ])
 
-        # Resolve the template-space atlas reference image for resampling
-        # the tumor segmentation. Uses the first output space to determine
-        # which atlas set (MNI152 or SRI24) to use.
+        # Resolve the template-space atlas reference image.  Used for
+        # resampling the tumor segmentation to standard space and for
+        # atlas-based VASARI feature extraction.
         from ..interfaces.vasari import get_atlas_reference
         _atlas_space = std_spaces[0] if std_spaces else 'MNI152NLin2009cAsym'
         _std_ref = get_atlas_reference(_atlas_space)
-        anat_seg_wf.get_node('inputnode').inputs.std_reference = _std_ref
 
         workflow.connect([
             # Save tumor segmentation to BIDS derivatives
@@ -671,6 +707,155 @@ to workflows in *OncoPrep*'s documentation]\
             (tumor_rpt, ds_tumor_dseg_report, [('out_report', 'in_file')]),
         ])
 
+        # ================================================================
+        # Topology-Preserving Template Registration (deferred)
+        # ================================================================
+        # Registration is performed AFTER segmentation so the whole-tumor
+        # mask (dilated by 4 voxels) can be fed into ANTs SyN as a
+        # cost-function exclusion mask (-x).  This prevents pathological
+        # tissue from distorting the diffeomorphic warp, preserving global
+        # geometry for accurate atlas-based reporting (VASARI).
+        # ================================================================
+        LOGGER.info(
+            'ANAT Stage 7: Deferred template registration with '
+            'tumor cost-function mask'
+        )
+        from .fit.registration import init_multimodal_template_registration_wf
+        from .outputs import (
+            init_template_iterator_wf,
+            init_ds_template_registration_wf,
+            init_ds_anat_volumes_wf,
+        )
+        from nipype.interfaces.ants import ApplyTransforms
+        from niworkflows.utils.spaces import SpatialReferences as _SR
+
+        # --- Create binary whole-tumor mask, dilated by 4 voxels ---
+        create_lesion_mask = pe.Node(
+            niu.Function(
+                function=_create_dilated_tumor_mask,
+                input_names=['tumor_seg', 'dilation_radius'],
+                output_names=['out_file'],
+            ),
+            name='create_lesion_mask',
+        )
+        create_lesion_mask.inputs.dilation_radius = 4
+
+        # --- Deferred template registration with lesion mask ---
+        deferred_reg_wf = init_multimodal_template_registration_wf(
+            sloppy=sloppy,
+            omp_nthreads=omp_nthreads,
+            templates=std_spaces,
+            registration_backend=registration_backend,
+            name='deferred_reg_wf',
+        )
+
+        # Append deferred-registration boilerplate to the workflow description.
+        # The registration sub-workflow already carries its own __desc__
+        # describing the SyN/Greedy algorithm and template targets; this
+        # additional paragraph documents the *pipeline ordering* rationale
+        # and the cost-function exclusion mask.
+        deferred_reg_wf.__postdesc__ = """\
+Template registration was **deferred** until after tumor segmentation so that
+the whole-tumor mask could be used as a cost-function exclusion region.
+The binary tumor mask (any label > 0) was morphologically dilated by 4 voxels
+using a 6-connected structuring element and supplied to `antsRegistration` via
+the `-x` (cost-function exclusion) flag [@avants2011].  This prevents
+pathological tissue from biasing the diffeomorphic warp, preserving global
+brain geometry for accurate atlas-based analyses.
+The native-space tumor segmentation was subsequently resampled into the
+template space using `antsApplyTransforms` with nearest-neighbor interpolation
+to preserve discrete label values.
+"""
+
+        # --- Save transforms as BIDS derivatives ---
+        ds_deferred_reg_wf = init_ds_template_registration_wf(
+            output_dir=output_dir,
+            image_type='T1w',
+            name='ds_deferred_reg_wf',
+        )
+
+        # --- Template-space volume derivatives ---
+        _spaces_ref = (
+            _SR(std_spaces) if not isinstance(std_spaces, _SR) else std_spaces
+        )
+        template_iterator_wf = init_template_iterator_wf(
+            spaces=_spaces_ref,
+            sloppy=sloppy,
+        )
+        ds_std_volumes_wf = init_ds_anat_volumes_wf(
+            bids_dir=bids_dir,
+            output_dir=output_dir,
+        )
+
+        # --- Resample tumor segmentation to template space ---
+        resample_seg_to_std = pe.Node(
+            ApplyTransforms(
+                interpolation='NearestNeighbor',
+                float=True,
+            ),
+            name='resample_seg_to_std',
+            mem_gb=2,
+        )
+        resample_seg_to_std.inputs.reference_image = _std_ref
+
+        workflow.connect([
+            # Dilated tumor mask from segmentation output
+            (anat_seg_wf, create_lesion_mask, [
+                ('outputnode.tumor_seg_old', 'tumor_seg'),
+            ]),
+            # Feed native-space images + dilated lesion mask to registration
+            (anat_preproc_wf, deferred_reg_wf, [
+                ('outputnode.t1w_brain', 'inputnode.t1w'),
+                ('outputnode.t1w_mask', 'inputnode.t1w_mask'),
+                ('outputnode.t1ce_preproc', 'inputnode.t1ce'),
+                ('outputnode.t2w_preproc', 'inputnode.t2w'),
+                ('outputnode.flair_preproc', 'inputnode.flair'),
+            ]),
+            (create_lesion_mask, deferred_reg_wf, [
+                ('out_file', 'inputnode.lesion_mask'),
+            ]),
+            # Save transforms as BIDS derivatives
+            (bidssrc, ds_deferred_reg_wf, [
+                ('t1w', 'inputnode.source_files'),
+            ]),
+            (deferred_reg_wf, ds_deferred_reg_wf, [
+                ('outputnode.template', 'inputnode.template'),
+                ('outputnode.anat2std_xfm', 'inputnode.anat2std_xfm'),
+                ('outputnode.std2anat_xfm', 'inputnode.std2anat_xfm'),
+            ]),
+            # Template iterator + std volume derivatives
+            (deferred_reg_wf, template_iterator_wf, [
+                ('outputnode.template', 'inputnode.template'),
+                ('outputnode.anat2std_xfm', 'inputnode.anat2std_xfm'),
+            ]),
+            (anat_preproc_wf, ds_std_volumes_wf, [
+                ('outputnode.t1w_preproc', 'inputnode.anat_preproc'),
+                ('outputnode.t1w_mask', 'inputnode.anat_mask'),
+                ('outputnode.t1w_dseg', 'inputnode.anat_dseg'),
+                ('outputnode.t1w_tpms', 'inputnode.anat_tpms'),
+                ('outputnode.t1ce_preproc', 'inputnode.t1ce_preproc'),
+                ('outputnode.t2w_preproc', 'inputnode.t2w_preproc'),
+                ('outputnode.flair_preproc', 'inputnode.flair_preproc'),
+            ]),
+            (bidssrc, ds_std_volumes_wf, [
+                ('t1w', 'inputnode.source_files'),
+            ]),
+            (template_iterator_wf, ds_std_volumes_wf, [
+                ('outputnode.std_t1w', 'inputnode.ref_file'),
+                ('outputnode.anat2std_xfm', 'inputnode.anat2std_xfm'),
+                ('outputnode.space', 'inputnode.space'),
+                ('outputnode.cohort', 'inputnode.cohort'),
+                ('outputnode.resolution', 'inputnode.resolution'),
+            ]),
+            # Resample tumor segmentation to template space
+            (anat_seg_wf, resample_seg_to_std, [
+                ('outputnode.tumor_seg_old', 'input_image'),
+            ]),
+            (deferred_reg_wf, resample_seg_to_std, [
+                ('outputnode.anat2std_xfm', 'transforms'),
+            ]),
+        ])
+
 
     # Radiomics feature extraction workflow (optional, requires segmentation)
     if run_radiomics and run_segmentation:
@@ -733,8 +918,8 @@ to workflows in *OncoPrep*'s documentation]\
             (bidssrc, anat_vasari_wf, [
                 (('t1w', fix_multi_T1w_source_name), 'inputnode.source_file'),
             ]),
-            (anat_seg_wf, anat_vasari_wf, [
-                ('outputnode.tumor_seg_std', 'inputnode.tumor_seg_std'),
+            (resample_seg_to_std, anat_vasari_wf, [
+                ('output_image', 'inputnode.tumor_seg_std'),
             ]),
             (bids_info, anat_vasari_wf, [
                 (('subject', _prefix, session_id), 'inputnode.subject_id'),
@@ -795,10 +980,21 @@ to workflows in *OncoPrep*'s documentation]\
     workflow.connect([
         (ds_report_summary, report_sentinel_merge, [('out_file', 'in1')]),
         (ds_report_about, report_sentinel_merge, [('out_file', 'in2')]),
-        (anat_preproc_wf, report_sentinel_merge, [
-            ('outputnode.anat2std_xfm', 'in3'),
-        ]),
     ])
+    if run_segmentation:
+        # Sentinel uses deferred registration (runs after segmentation)
+        workflow.connect([
+            (deferred_reg_wf, report_sentinel_merge, [
+                ('outputnode.anat2std_xfm', 'in3'),
+            ]),
+        ])
+    else:
+        # Sentinel uses normal registration from anat_preproc_wf
+        workflow.connect([
+            (anat_preproc_wf, report_sentinel_merge, [
+                ('outputnode.anat2std_xfm', 'in3'),
+            ]),
+        ])
 
     _sentinel_idx = 3
     if run_segmentation:
@@ -845,7 +1041,9 @@ def _prefix(subject_id, session_id):
     if session_id:
         ses_str = session_id
         if isinstance(session_id, list):
-            from ..utils.misc import stringify_sessions
+            # Use absolute import so Nipype can exec() this function's
+            # source in a clean namespace (multiproc serialisation).
+            from oncoprep.utils.misc import stringify_sessions
             ses_str = stringify_sessions(session_id)
         if not ses_str.startswith('ses-'):
             ses_str = f'ses-{ses_str}'

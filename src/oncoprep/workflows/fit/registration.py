@@ -68,7 +68,6 @@ def _greedy_registration(moving_image, fixed_image, omp_nthreads=1, sloppy=False
     import os
     import shutil
     import subprocess
-    from pathlib import Path
     
     # Check if greedy is available
     if shutil.which('greedy') is None:
@@ -658,7 +657,6 @@ def _apply_transform_if_exists(input_image, reference_image, transforms, backend
     if input_image is None:
         return None
     
-    from pathlib import Path
     import subprocess
     
     input_path = Path(input_image)
@@ -692,7 +690,7 @@ def _apply_transform_if_exists(input_image, reference_image, transforms, backend
         for t in transforms:
             cmd.extend(['-t', str(t)])
     
-    result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+    subprocess.run(cmd, capture_output=True, text=True, check=True)
     
     return str(output_path)
 

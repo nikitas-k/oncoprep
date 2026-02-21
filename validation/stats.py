@@ -367,3 +367,113 @@ def sample_size_paired_continuous(
     z_beta = norm.ppf(power)
     n = ((z_alpha + z_beta) * sigma_delta / delta) ** 2
     return int(math.ceil(n))
+
+
+# ---------------------------------------------------------------------------
+# Coefficient of Variation (Phase D — radiomics stability)
+# ---------------------------------------------------------------------------
+
+
+def coefficient_of_variation(
+    values: np.ndarray,
+) -> float:
+    r"""Coefficient of Variation: CV = (σ / μ) × 100%.
+
+    Parameters
+    ----------
+    values : array-like, 1-D
+        Observed feature values across subjects.
+
+    Returns
+    -------
+    float
+        CV as a percentage.  Returns ``nan`` if the mean is zero.
+    """
+    values = np.asarray(values, dtype=float)
+    mu = np.mean(values)
+    if mu == 0 or np.isnan(mu):
+        return float("nan")
+    sigma = np.std(values, ddof=1)
+    return float(abs(sigma / mu) * 100.0)
+
+
+# ---------------------------------------------------------------------------
+# Wilcoxon signed-rank test (Phase D — radiomics stability)
+# ---------------------------------------------------------------------------
+
+
+def wilcoxon_signed_rank(
+    x: np.ndarray,
+    y: np.ndarray,
+) -> Tuple[float, float]:
+    """Paired Wilcoxon signed-rank test.
+
+    Parameters
+    ----------
+    x, y : array-like, 1-D
+        Paired observations (same length).
+
+    Returns
+    -------
+    statistic, p_value : float
+    """
+    from scipy.stats import wilcoxon
+
+    x, y = np.asarray(x, dtype=float), np.asarray(y, dtype=float)
+    # Drop pairs with zero difference (standard practice)
+    diff = x - y
+    nonzero = diff != 0
+    if np.sum(nonzero) < 10:
+        # Too few non-tied observations for a reliable test
+        return float("nan"), float("nan")
+    stat, p = wilcoxon(x[nonzero], y[nonzero])
+    return float(stat), float(p)
+
+
+# ---------------------------------------------------------------------------
+# Benjamini–Hochberg FDR correction (Phase D — radiomics stability)
+# ---------------------------------------------------------------------------
+
+
+def benjamini_hochberg(
+    p_values: np.ndarray,
+    alpha: float = 0.05,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Benjamini–Hochberg procedure for FDR-controlled multiple comparisons.
+
+    Parameters
+    ----------
+    p_values : array-like, 1-D
+        Unadjusted *p*-values.
+    alpha : float
+        Desired false discovery rate (default 0.05).
+
+    Returns
+    -------
+    rejected : ndarray of bool
+        True where the null hypothesis is rejected at *alpha* FDR.
+    adjusted_p : ndarray of float
+        Adjusted *p*-values (q-values).
+    """
+    p = np.asarray(p_values, dtype=float)
+    m = len(p)
+    if m == 0:
+        return np.array([], dtype=bool), np.array([], dtype=float)
+
+    # Sort p-values in ascending order
+    order = np.argsort(p)
+    sorted_p = p[order]
+
+    # BH adjusted p-values (cumulative minimum from the right)
+    adjusted = np.empty(m, dtype=float)
+    adjusted[-1] = sorted_p[-1]
+    for i in range(m - 2, -1, -1):
+        adjusted[i] = min(adjusted[i + 1], sorted_p[i] * m / (i + 1))
+    adjusted = np.clip(adjusted, 0, 1)
+
+    # Rejection decisions
+    rejected_sorted = adjusted <= alpha
+
+    # Unsort to original order
+    unsort_idx = np.argsort(order)
+    return rejected_sorted[unsort_idx], adjusted[unsort_idx]

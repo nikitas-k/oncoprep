@@ -338,14 +338,14 @@ def _print_pull_commands(
     fmt: str,
 ) -> int:
     """Print shell commands for the user to run on the host."""
-    print(f"#!/usr/bin/env bash")
-    print(f"# OncoPrep segmentation model pull commands")
+    print("#!/usr/bin/env bash")
+    print("# OncoPrep segmentation model pull commands")
     print(f"# Run these on a login node with '{pull_cmd}' available.")
-    print(f"#")
+    print("#")
     print(f"# Output directory: {output_dir}")
     print(f"# Format: {fmt}")
-    print(f"")
-    print(f"set -e")
+    print("")
+    print("set -e")
     print(f"mkdir -p {output_dir}")
     print()
 

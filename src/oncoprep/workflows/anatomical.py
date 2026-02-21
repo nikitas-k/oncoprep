@@ -59,14 +59,8 @@ from .outputs import (
     init_anat_reports_wf,
     init_ds_anat_volumes_wf,
     init_ds_dseg_wf,
-    init_ds_fs_registration_wf,
-    init_ds_fs_segs_wf,
-    init_ds_grayord_metrics_wf,
     init_ds_mask_wf,
     init_ds_modalities_wf,
-    init_ds_surface_masks_wf,
-    init_ds_surface_metrics_wf,
-    init_ds_surfaces_wf,
     init_ds_template_registration_wf,
     init_ds_template_wf,
     init_ds_tpms_wf,
@@ -104,6 +98,7 @@ def init_anat_preproc_wf(
     use_gpu: bool = False,
     defacing: bool = False,
     sloppy: bool = False,
+    skip_registration: bool = False,
     name: str = 'anat_preproc_wf',
 ):
     """
@@ -262,12 +257,9 @@ def init_anat_preproc_wf(
         sloppy=sloppy,
         omp_nthreads=omp_nthreads,
         skull_strip_fixed_seed=skull_strip_fixed_seed,
+        skip_registration=skip_registration,
     )
-    template_iterator_wf = init_template_iterator_wf(spaces=output_spaces, sloppy=sloppy)
-    ds_std_volumes_wf = init_ds_anat_volumes_wf(
-        bids_dir=bids_dir,
-        output_dir=output_dir,
-    )
+
     workflow.connect([
         (inputnode, anat_fit_wf, [
             ('t1w', 'inputnode.t1w'),
@@ -296,28 +288,38 @@ def init_anat_preproc_wf(
             ('outputnode.flair_defaced', 'flair_defaced'),
             ('outputnode.flair_preproc', 'flair_preproc'),
         ]),
-        (anat_fit_wf, template_iterator_wf, [
-            ('outputnode.template', 'inputnode.template'),
-            ('outputnode.anat2std_xfm', 'inputnode.anat2std_xfm'),
-        ]),
-        (anat_fit_wf, ds_std_volumes_wf, [
-            ('outputnode.t1w_valid_list', 'inputnode.source_files'),
-            ('outputnode.t1w_preproc', 'inputnode.anat_preproc'),
-            ('outputnode.t1w_mask', 'inputnode.anat_mask'),
-            ('outputnode.t1w_dseg', 'inputnode.anat_dseg'),
-            ('outputnode.t1w_tpms', 'inputnode.anat_tpms'),
-            ('outputnode.t1ce_preproc', 'inputnode.t1ce_preproc'),
-            ('outputnode.t2w_preproc', 'inputnode.t2w_preproc'),
-            ('outputnode.flair_preproc', 'inputnode.flair_preproc'),
-        ]),
-        (template_iterator_wf, ds_std_volumes_wf, [
-            ('outputnode.std_t1w', 'inputnode.ref_file'),
-            ('outputnode.anat2std_xfm', 'inputnode.anat2std_xfm'),
-            ('outputnode.space', 'inputnode.space'),
-            ('outputnode.cohort', 'inputnode.cohort'),
-            ('outputnode.resolution', 'inputnode.resolution'),
-        ]),
     ])
+
+    # Template-space volume outputs (only when registration runs inside this workflow)
+    if not skip_registration:
+        template_iterator_wf = init_template_iterator_wf(spaces=output_spaces, sloppy=sloppy)
+        ds_std_volumes_wf = init_ds_anat_volumes_wf(
+            bids_dir=bids_dir,
+            output_dir=output_dir,
+        )
+        workflow.connect([
+            (anat_fit_wf, template_iterator_wf, [
+                ('outputnode.template', 'inputnode.template'),
+                ('outputnode.anat2std_xfm', 'inputnode.anat2std_xfm'),
+            ]),
+            (anat_fit_wf, ds_std_volumes_wf, [
+                ('outputnode.t1w_valid_list', 'inputnode.source_files'),
+                ('outputnode.t1w_preproc', 'inputnode.anat_preproc'),
+                ('outputnode.t1w_mask', 'inputnode.anat_mask'),
+                ('outputnode.t1w_dseg', 'inputnode.anat_dseg'),
+                ('outputnode.t1w_tpms', 'inputnode.anat_tpms'),
+                ('outputnode.t1ce_preproc', 'inputnode.t1ce_preproc'),
+                ('outputnode.t2w_preproc', 'inputnode.t2w_preproc'),
+                ('outputnode.flair_preproc', 'inputnode.flair_preproc'),
+            ]),
+            (template_iterator_wf, ds_std_volumes_wf, [
+                ('outputnode.std_t1w', 'inputnode.ref_file'),
+                ('outputnode.anat2std_xfm', 'inputnode.anat2std_xfm'),
+                ('outputnode.space', 'inputnode.space'),
+                ('outputnode.cohort', 'inputnode.cohort'),
+                ('outputnode.resolution', 'inputnode.resolution'),
+            ]),
+        ])
     workflow.__desc__ = anat_fit_wf.__desc__
     return workflow
     # TODO: add surface pipeline when tested
@@ -343,6 +345,7 @@ def init_anat_fit_wf(
     skull_strip_backend: str = 'ants',
     registration_backend: str = 'ants',
     sloppy: bool = False,
+    skip_registration: bool = False,
 ):
     """
     Stage the anatomical preprocessing steps of *OncoPrep*.
@@ -603,8 +606,12 @@ BIDS dataset.
     )
 
     # Reporting
+    # When registration is deferred (skip_registration=True), pass empty
+    # spaces so the reports workflow does not try to iterate over templates
+    # and select transforms that don't exist yet.
+    _report_spaces = [] if skip_registration else output_spaces
     anat_reports_wf = init_anat_reports_wf(
-        spaces=output_spaces,
+        spaces=_report_spaces,
         output_dir=output_dir,
         sloppy=sloppy,
         freesurfer=False,
@@ -1169,7 +1176,20 @@ brain-extracted T1w using `fast` [FSL {fsl_ver}; RRID:SCR_002823, @fsl_fast].
 
     # Stage 5: Spatial normalization (if needed)
     # ============================================
-    if templates:
+    if skip_registration:
+        LOGGER.info(
+            'ANAT Stage 5: Skipping template registration '
+            '(deferred until after segmentation for cost-function masking)'
+        )
+        desc += (
+            "\n\nTemplate registration was deferred until after tumor "
+            "segmentation to enable cost-function exclusion masking "
+            "(see deferred registration section below).\n"
+        )
+        template_buffer.inputs.in2 = []
+        anat2std_buffer.inputs.in2 = []
+        std2anat_buffer.inputs.in2 = []
+    elif templates:
         LOGGER.info(f'ANAT Stage 5: Registering to template(s): {templates}')
         register_template_wf = init_multimodal_template_registration_wf(
             sloppy=sloppy,
@@ -1410,7 +1430,7 @@ def _register_modality(moving, fixed, fixed_mask):
     registered_img = result.outputs.warped_image
     
     if registered_img is None or registered_img == Undefined:
-        raise RuntimeError(f"Registration failed: no output warped image produced")
+        raise RuntimeError("Registration failed: no output warped image produced")
 
     return str(registered_img)
 
@@ -1437,8 +1457,8 @@ def _deface_anatomical(in_file):
     import subprocess
 
     try:
-        import mri_deface
-        from mri_deface.deface import run as deface_run
+        import mri_deface  # noqa: F401
+        from mri_deface.deface import run as deface_run  # noqa: F401
     except ImportError:
         LOGGER.warning(
             "mri_deface not available. Install with: pip install mri-deface. "
@@ -1657,11 +1677,6 @@ def init_anat_template_wf(
 
     return workflow
 
-def _pop(inlist):
-    if isinstance(inlist, list):
-        return inlist[0]
-    return inlist
-
 def _probseg_fast2bids(inlist):
     """Reorder a list of probseg maps from FAST (CSF, WM, GM) to BIDS (GM, WM, CSF)"""
     return [inlist[2], inlist[1], inlist[0]]
@@ -1793,7 +1808,7 @@ def _run_hdbet(in_file: str, use_gpu: bool = True) -> tuple:
         cmd.extend(['-device', 'cpu'])
     
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        subprocess.run(cmd, capture_output=True, text=True, check=True)
     except FileNotFoundError:
         raise RuntimeError(
             "HD-BET not found. Install with: pip install hd-bet"
@@ -1812,7 +1827,7 @@ def _run_hdbet(in_file: str, use_gpu: bool = True) -> tuple:
             out_path.stem + '_mask.nii.gz'
         )
         if not mask_path.exists():
-            raise RuntimeError(f"HD-BET mask not found")
+            raise RuntimeError("HD-BET mask not found")
     
     return str(out_path), str(mask_path)
 
@@ -1925,12 +1940,12 @@ def _run_synthstrip(in_file: str) -> tuple:
     ]
     
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        subprocess.run(cmd, capture_output=True, text=True, check=True)
     except FileNotFoundError:
         # Try synthstrip as standalone command
         cmd[0] = 'synthstrip'
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            subprocess.run(cmd, capture_output=True, text=True, check=True)
         except FileNotFoundError:
             raise RuntimeError(
                 "SynthStrip not found. Install FreeSurfer or use: "
