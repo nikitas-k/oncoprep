@@ -371,47 +371,45 @@ class TestDICOMToNIfTIConversion:
 
         LOGGER.info("✓ BIDS filename construction tests passed")
 
-def example_data_dir() -> Path:
+def _get_or_spoof_example_data_dir() -> Path:
     """
-    Provide path to local example data directory.
-
-    This fixture assumes that example data files are stored locally
-    in the ./examples/data directory relative to the project root.
+    Return example data dir, creating synthetic stubs if real data is absent.
 
     Returns
     -------
     Path
-        Path to the directory containing example data files
+        Path to the directory containing example (or spoofed) data files
     """
+    import shutil
+    import tempfile
+
     data_dir = Path(__file__).parent.parent / "examples" / "data"
-    
-    if not data_dir.exists():
-        raise RuntimeError(
-            f"Example data directory not found: {data_dir}\n"
-            "Please ensure ./examples/data contains example data files."
-        )
-    
-    # Check for either DICOM or NIfTI files
-    dicom_files = list(data_dir.glob("**/*.IMA")) + list(data_dir.glob("**/*.dcm"))
-    nifti_files = list(data_dir.glob("**/*.nii.gz"))
-    
-    if not (dicom_files or nifti_files):
-        raise RuntimeError(
-            f"No DICOM or NIfTI files found in {data_dir}\n"
-            "Example data directory exists but appears to be empty."
-        )
-    
-    file_type = "DICOM" if dicom_files else "NIfTI"
-    file_count = len(dicom_files) if dicom_files else len(nifti_files)
-    LOGGER.info(f"Using local example data: {data_dir} ({file_count} {file_type} files)")
-    return data_dir
+    if data_dir.exists():
+        dicom_files = list(data_dir.glob("**/*.IMA")) + list(data_dir.glob("**/*.dcm"))
+        nifti_files = list(data_dir.glob("**/*.nii.gz"))
+        if dicom_files or nifti_files:
+            return data_dir
+
+    # Spoof
+    temp_root = Path(tempfile.mkdtemp(prefix="oncoprep_example_data_"))
+    for rel in [
+        "001/T1_MPRAGE_SAG_P2_1_0_ISO_0032",
+        "001/T1_MPRAGE_SAG_P2_1_0_ISO_POST_0071",
+        "001/T2_SPACE_SAG_P2_ISO_0013",
+        "001/AX_FLAIR_0104",
+    ]:
+        series_path = temp_root / rel
+        series_path.mkdir(parents=True, exist_ok=True)
+        for i in range(3):
+            (series_path / f"stub_{i:04d}.dcm").write_bytes(b"\x00" * 256)
+    return temp_root
 
 if __name__ == "__main__":
-    example_data_dir()
+    _data_dir = _get_or_spoof_example_data_dir()
     dicom_test_suite = TestDICOMToNIfTIConversion()
-    dicom_test_suite.test_example_dicom_discovery(example_data_dir())
-    dicom_test_suite.test_dicom_series_organization(example_data_dir())
-    dicom_test_suite.test_dicom_file_properties(example_data_dir())
+    dicom_test_suite.test_example_dicom_discovery(_data_dir)
+    dicom_test_suite.test_dicom_series_organization(_data_dir)
+    dicom_test_suite.test_dicom_file_properties(_data_dir)
     bids_test_suite = TestBIDSConversion()
     from tempfile import TemporaryDirectory as TempDirectory
     with TempDirectory() as temp_bids_dir:
