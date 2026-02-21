@@ -155,10 +155,15 @@ def run_all(
                 gt_dir=gt_dir,
                 dataset_key=dataset_key or "unknown",
                 max_cases=max_cases,
+                comparator_dir=comparator_dir,
             )
             out = results_dir / "phase_d" / f"phase_d_{dataset_key}.json"
             save_phase_d_results(results_d, out)
             print(f"  Evaluated {results_d.n_cases} cases")
+            if results_d.radiomics_stability is not None:
+                rs = results_d.radiomics_stability
+                print(f"  D3 radiomics stability: {rs['n_features_stable']}/"
+                      f"{rs['n_features_total']} features highly stable")
 
     # --- Figures ---
     if "figures" in phases:

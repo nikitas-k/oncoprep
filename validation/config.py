@@ -412,7 +412,9 @@ PHASE_D_ENDPOINTS = {
         "D2": "Longitudinal plausibility — rate of implausible jumps flagged by QC",
     },
     "secondary": [
-        "Optional radiomics stability (ICC of selected features)",
+        "D3: Radiomic feature stability — CV and ICC(3,1) across native-first vs "
+        "atlas-first preprocessing; features with ICC≥0.85 and CV≤10% classified as "
+        "highly stable; paired Wilcoxon signed-rank with Benjamini–Hochberg FDR",
     ],
 }
 

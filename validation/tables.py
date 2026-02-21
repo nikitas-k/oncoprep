@@ -287,6 +287,96 @@ def _to_csv(headers: List[str], rows: List[List[str]]) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Table 5 — Radiomic feature stability (D3)
+# ---------------------------------------------------------------------------
+
+
+def table5_radiomics_stability(
+    radiomics_paths: List[Path],
+    output_dir: Path,
+    fmt: str = "latex",
+) -> None:
+    """Table 5: Radiomic feature stability — per-class ICC and CV summary.
+
+    One row per IBSI feature class, columns for total features, % stable,
+    median ICC, and median CV for both native-first and atlas-first
+    preprocessing architectures.
+    """
+    rows: List[List[str]] = []
+    wilcoxon_note = ""
+
+    for p in radiomics_paths:
+        d = _load_json(p)
+        ds = d.get("dataset", "?")
+
+        for cls, sums in sorted(d.get("class_summary", {}).items()):
+            n_t = int(sums.get("n_total", 0))
+            n_s = int(sums.get("n_stable", 0))
+            pct = sums.get("pct_stable", 0.0)
+            med_icc = sums.get("median_icc")
+            med_cv_n = sums.get("median_cv_native")
+            med_cv_a = sums.get("median_cv_atlas")
+
+            rows.append([
+                ds,
+                cls.upper(),
+                str(n_t),
+                f"{n_s} ({pct:.1f}\\%)" if fmt == "latex" else f"{n_s} ({pct:.1f}%)",
+                f"{med_icc:.3f}" if med_icc is not None else "---",
+                f"{med_cv_n:.1f}\\%" if med_cv_n is not None and fmt == "latex"
+                else (f"{med_cv_n:.1f}%" if med_cv_n is not None else "---"),
+                f"{med_cv_a:.1f}\\%" if med_cv_a is not None and fmt == "latex"
+                else (f"{med_cv_a:.1f}%" if med_cv_a is not None else "---"),
+            ])
+
+        # Wilcoxon summary footnote
+        w_p = d.get("wilcoxon_p_value")
+        if w_p is not None:
+            sig = "rejected" if d.get("wilcoxon_fdr_rejected") else "not rejected"
+            wilcoxon_note = (
+                f"Paired Wilcoxon signed-rank on CV distributions: "
+                f"$p = {w_p:.4f}$ ({sig} at FDR "
+                f"$\\alpha = {d.get('fdr_alpha', 0.05)}$)."
+            )
+
+    # Grand totals
+    total_row_data: List[List[str]] = []
+    for p in radiomics_paths:
+        d = _load_json(p)
+        total_row_data.append([
+            d.get("dataset", "?"),
+            "\\textbf{All}" if fmt == "latex" else "All",
+            str(d.get("n_features_total", 0)),
+            (f"{d.get('n_features_stable', 0)} "
+             f"({d.get('pct_features_stable', 0.0):.1f}\\%)"
+             if fmt == "latex"
+             else f"{d.get('n_features_stable', 0)} "
+                  f"({d.get('pct_features_stable', 0.0):.1f}%)"),
+            "---", "---", "---",
+        ])
+    rows.extend(total_row_data)
+
+    headers = [
+        "Dataset", "Class", "N features",
+        "Stable (ICC$\\geq$0.85, CV$\\leq$10\\%)" if fmt == "latex"
+        else "Stable (ICC>=0.85, CV<=10%)",
+        "Median ICC", "Median CV (native)", "Median CV (atlas)",
+    ]
+
+    if fmt == "latex":
+        caption = "Radiomic feature stability across preprocessing architectures"
+        if wilcoxon_note:
+            caption += f". {wilcoxon_note}"
+        content = _to_latex(headers, rows, caption=caption,
+                            label="tab:radiomics_stability")
+    else:
+        content = _to_csv(headers, rows)
+
+    ext = "tex" if fmt == "latex" else "csv"
+    _save_table(content, output_dir / f"table5_radiomics_stability.{ext}")
+
+
+# ---------------------------------------------------------------------------
 # CLI entry point
 # ---------------------------------------------------------------------------
 
@@ -296,8 +386,8 @@ def main() -> None:
     parser.add_argument("--results-dir", type=Path, default=Path("validation_results"))
     parser.add_argument("--output-dir", type=Path, default=Path("tables"))
     parser.add_argument("--format", default="latex", choices=["latex", "csv"])
-    parser.add_argument("--tables", nargs="*", default=["1", "2", "3", "4"],
-                        help="Which tables to generate (1–4)")
+    parser.add_argument("--tables", nargs="*", default=["1", "2", "3", "4", "5"],
+                        help="Which tables to generate (1–5)")
 
     args = parser.parse_args()
     results_dir = args.results_dir
@@ -326,6 +416,13 @@ def main() -> None:
             table4_compute(phase_a_files, args.output_dir, args.format)
         else:
             print("  Skipping Table 4: no Phase A results")
+
+    if "5" in args.tables:
+        rad_stability_files = sorted(results_dir.glob("phase_d/radiomics_stability_*.json"))
+        if rad_stability_files:
+            table5_radiomics_stability(rad_stability_files, args.output_dir, args.format)
+        else:
+            print("  Skipping Table 5: no radiomics stability results")
 
 
 if __name__ == "__main__":

@@ -15,6 +15,66 @@ from time import strftime
 from typing import List, Optional
 
 
+def _log_nodes_cb(node, status):
+    """Patched version of nipype.utils.profiler.log_nodes_cb.
+
+    The upstream callback crashes on MapNodes because ``node.result.runtime``
+    is a *list* of runtime objects, not a single object.  This wrapper
+    handles both cases (single runtime and list of runtimes).
+
+    See: https://github.com/nipy/nipype/issues/3585
+    """
+    if status != 'end':
+        return
+
+    import json as _json
+    import logging as _logging
+
+    runtime = node.result.runtime
+
+    # MapNode results have a list of per-sub-node runtimes
+    if isinstance(runtime, list):
+        if not runtime:
+            return
+        # Use the first sub-node for start, last for finish, sum durations
+        start = getattr(runtime[0], 'startTime', None)
+        finish = getattr(runtime[-1], 'endTime', None)
+        duration = sum(
+            getattr(rt, 'duration', 0) or 0 for rt in runtime
+        )
+        cpu_percent = max(
+            (getattr(rt, 'cpu_percent', 0) or 0 for rt in runtime),
+            default='N/A',
+        )
+        mem_peak_gb = max(
+            (getattr(rt, 'mem_peak_gb', 0) or 0 for rt in runtime),
+            default='N/A',
+        )
+    else:
+        start = getattr(runtime, 'startTime', None)
+        finish = getattr(runtime, 'endTime', None)
+        duration = getattr(runtime, 'duration', None)
+        cpu_percent = getattr(runtime, 'cpu_percent', 'N/A')
+        mem_peak_gb = getattr(runtime, 'mem_peak_gb', 'N/A')
+
+    status_dict = {
+        'name': node.name,
+        'id': node._id,
+        'start': start,
+        'finish': finish,
+        'duration': duration,
+        'runtime_threads': cpu_percent,
+        'runtime_memory_gb': mem_peak_gb,
+        'estimated_memory_gb': node.mem_gb,
+        'num_threads': node.n_procs,
+    }
+
+    if status_dict['start'] is None or status_dict['finish'] is None:
+        status_dict['error'] = True
+
+    _logging.getLogger('callback').debug(_json.dumps(status_dict))
+
+
 def main():
     """Set an entrypoint for oncoprep."""
     # Handle --version early (before heavy imports that trigger TemplateFlow indexing)
@@ -827,8 +887,7 @@ def build_workflow(opts, retval):
     
     if opts.resource_monitor:
         ncfg.enable_resource_monitor()
-        from nipype.utils.profiler import log_nodes_cb
-        plugin_settings['plugin_args']['status_callback'] = log_nodes_cb
+        plugin_settings['plugin_args']['status_callback'] = _log_nodes_cb
     
     retval['return_code'] = 0
     retval['plugin_settings'] = plugin_settings

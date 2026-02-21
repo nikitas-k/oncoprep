@@ -467,6 +467,147 @@ def figure6_quantitative_stability(
 
 
 # ---------------------------------------------------------------------------
+# Figure 6b — Radiomic feature stability (native-first vs atlas-first)
+# ---------------------------------------------------------------------------
+
+# Colour palette for feature classes
+FEATURE_CLASS_COLORS = {
+    "firstorder": "#1f77b4",
+    "shape": "#ff7f0e",
+    "glcm": "#2ca02c",
+    "glrlm": "#d62728",
+    "glszm": "#9467bd",
+    "gldm": "#8c564b",
+    "ngtdm": "#e377c2",
+    "unknown": "#999999",
+}
+
+
+def figure6b_radiomics_stability(
+    radiomics_paths: List[Path],
+    output_dir: Path,
+    fmt: str = "pdf",
+    dpi: int = 300,
+) -> None:
+    """Figure 6b: Radiomic feature stability across preprocessing architectures.
+
+    (A) Per-feature ICC scatter (native CV vs atlas CV, coloured by class).
+    (B) Per-class stacked bar (stable vs unstable features).
+    (C) CV distribution comparison (native vs atlas, violin/box).
+    """
+    all_data = [_load_json(p) for p in radiomics_paths]
+
+    fig = plt.figure(figsize=(15, 5))
+    gs = gridspec.GridSpec(1, 3, width_ratios=[1.2, 0.8, 1.0], wspace=0.35)
+
+    # Gather feature-level records across all datasets
+    all_features: List[Dict] = []
+    for d in all_data:
+        all_features.extend(d.get("features", []))
+
+    icc_thresh = all_data[0].get("icc_threshold", 0.85) if all_data else 0.85
+    cv_thresh = all_data[0].get("cv_threshold", 10.0) if all_data else 10.0
+
+    # --- Panel A: ICC vs CV scatter ---
+    ax_a = fig.add_subplot(gs[0])
+    for feat in all_features:
+        icc_val = feat.get("icc")
+        cv_n = feat.get("cv_native")
+        if icc_val is None or cv_n is None:
+            continue
+        cls = feat.get("feature_class", "unknown")
+        color = FEATURE_CLASS_COLORS.get(cls, "#999999")
+        ax_a.scatter(cv_n, icc_val, s=12, alpha=0.5, color=color, edgecolors="none")
+
+    # Threshold lines
+    ax_a.axhline(icc_thresh, color="k", linestyle="--", linewidth=0.8, alpha=0.6)
+    ax_a.axvline(cv_thresh, color="k", linestyle="--", linewidth=0.8, alpha=0.6)
+    ax_a.set_xlabel("CV (%) — Native-first", fontsize=9)
+    ax_a.set_ylabel("ICC(3,1)", fontsize=9)
+    ax_a.set_title("(A) Feature stability landscape", fontsize=10, fontweight="bold")
+    ax_a.set_ylim(-0.1, 1.05)
+    ax_a.set_xlim(left=0)
+
+    # Legend for feature classes
+    from matplotlib.lines import Line2D
+    handles = [
+        Line2D([0], [0], marker="o", color="w", markerfacecolor=c, markersize=6, label=cls)
+        for cls, c in FEATURE_CLASS_COLORS.items()
+        if cls != "unknown"
+    ]
+    ax_a.legend(handles=handles, fontsize=6, loc="lower left", ncol=2, framealpha=0.8)
+
+    # --- Panel B: Per-class stacked bar ---
+    ax_b = fig.add_subplot(gs[1])
+
+    # Aggregate class summary from all datasets
+    combined_class: Dict[str, Dict[str, int]] = {}
+    for d in all_data:
+        for cls, sums in d.get("class_summary", {}).items():
+            if cls not in combined_class:
+                combined_class[cls] = {"n_stable": 0, "n_unstable": 0}
+            combined_class[cls]["n_stable"] += int(sums.get("n_stable", 0))
+            n_t = int(sums.get("n_total", 0))
+            n_s = int(sums.get("n_stable", 0))
+            combined_class[cls]["n_unstable"] += max(n_t - n_s, 0)
+
+    if combined_class:
+        classes = sorted(combined_class.keys())
+        n_stable = [combined_class[c]["n_stable"] for c in classes]
+        n_unstable = [combined_class[c]["n_unstable"] for c in classes]
+        x_pos = np.arange(len(classes))
+
+        ax_b.bar(x_pos, n_stable, 0.6, label="Stable", color="#4daf4a", alpha=0.8)
+        ax_b.bar(x_pos, n_unstable, 0.6, bottom=n_stable,
+                 label="Unstable", color="#e41a1c", alpha=0.6)
+        ax_b.set_xticks(x_pos)
+        ax_b.set_xticklabels(classes, fontsize=7, rotation=45, ha="right")
+        ax_b.legend(fontsize=7)
+
+    ax_b.set_ylabel("Feature count")
+    ax_b.set_title("(B) Stability by class", fontsize=10, fontweight="bold")
+
+    # --- Panel C: CV distribution comparison ---
+    ax_c = fig.add_subplot(gs[2])
+
+    cv_native = [f["cv_native"] for f in all_features
+                 if f.get("cv_native") is not None]
+    cv_atlas = [f["cv_atlas"] for f in all_features
+                if f.get("cv_atlas") is not None]
+
+    if cv_native and cv_atlas:
+        bp = ax_c.boxplot(
+            [cv_native, cv_atlas],
+            labels=["Native-first", "Atlas-first"],
+            widths=0.5,
+            patch_artist=True,
+            medianprops=dict(color="black"),
+        )
+        colors_box = ["#377eb8", "#ff7f00"]
+        for patch, color in zip(bp["boxes"], colors_box):
+            patch.set_facecolor(color)
+            patch.set_alpha(0.6)
+
+        # annotate Wilcoxon result if available
+        for d in all_data:
+            w_p = d.get("wilcoxon_p_value")
+            if w_p is not None:
+                sig_str = f"p = {w_p:.4f}"
+                if d.get("wilcoxon_fdr_rejected"):
+                    sig_str += " *"
+                ax_c.annotate(
+                    sig_str, xy=(1.5, max(max(cv_native), max(cv_atlas)) * 0.95),
+                    ha="center", fontsize=8,
+                )
+                break
+
+    ax_c.set_ylabel("CV (%)")
+    ax_c.set_title("(C) CV distribution", fontsize=10, fontweight="bold")
+
+    _save_fig(fig, output_dir / f"figure6b_radiomics_stability.{fmt}", fmt, dpi)
+
+
+# ---------------------------------------------------------------------------
 # Figure 7 — Human factors
 # ---------------------------------------------------------------------------
 
@@ -545,8 +686,8 @@ def main() -> None:
                         help="Output directory for figure files")
     parser.add_argument("--format", default="pdf", choices=["pdf", "png", "svg"])
     parser.add_argument("--dpi", type=int, default=300)
-    parser.add_argument("--figures", nargs="*", default=["3", "4", "5", "6", "7"],
-                        help="Which figures to generate (3–7)")
+    parser.add_argument("--figures", nargs="*", default=["3", "4", "5", "6", "6b", "7"],
+                        help="Which figures to generate (3–7, 6b)")
 
     args = parser.parse_args()
     results_dir = args.results_dir
@@ -578,6 +719,13 @@ def main() -> None:
             figure6_quantitative_stability(phase_d_files, args.output_dir, args.format, args.dpi)
         else:
             print("  Skipping Figure 6: no Phase D results found")
+
+    if "6b" in args.figures:
+        rad_stability_files = sorted(results_dir.glob("phase_d/radiomics_stability_*.json"))
+        if rad_stability_files:
+            figure6b_radiomics_stability(rad_stability_files, args.output_dir, args.format, args.dpi)
+        else:
+            print("  Skipping Figure 6b: no radiomics stability results found")
 
     if "7" in args.figures:
         phase_e_file = results_dir / "phase_e" / "phase_e_results.json"
