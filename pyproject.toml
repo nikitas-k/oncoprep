@@ -35,7 +35,8 @@ dependencies = [
   "torch",
   "torchvision",
   "torchaudio",
-  "huggingface_hub"
+  "huggingface_hub",
+  "nnInteractive>=1.0"
 ]
 
 [project.optional-dependencies]
