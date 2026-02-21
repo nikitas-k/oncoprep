@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "oncoprep"
-version = "0.2.5"
+version = "0.2.6"
 description = "A toolbox for analysing neuro-oncology MRI"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -43,8 +43,9 @@ dependencies = [
 hd-bet = [
     "hd-bet",
 ]
+# pyradiomics requires numpy at build time and has no Python 3.12 wheels;
+# install manually: pip install numpy && pip install pyradiomics==3.0.1
 radiomics = [
-    "pyradiomics==3.0.1",
     "neuroCombat>=0.2.12",
 ]
 vasari = [
