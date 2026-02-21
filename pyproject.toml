@@ -42,7 +42,7 @@ hd-bet = [
     "hd-bet",
 ]
 radiomics = [
-    "pyradiomics==3.0.1",
+    "pyradiomics @ git+https://github.com/AIM-Harvard/pyradiomics.git",
     "neuroCombat>=0.2.12",
 ]
 vasari = [
