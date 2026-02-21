@@ -1041,7 +1041,9 @@ def _prefix(subject_id, session_id):
     if session_id:
         ses_str = session_id
         if isinstance(session_id, list):
-            from ..utils.misc import stringify_sessions
+            # Use absolute import so Nipype can exec() this function's
+            # source in a clean namespace (multiproc serialisation).
+            from oncoprep.utils.misc import stringify_sessions
             ses_str = stringify_sessions(session_id)
         if not ses_str.startswith('ses-'):
             ses_str = f'ses-{ses_str}'
