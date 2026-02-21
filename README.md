@@ -1,8 +1,10 @@
 # oncoprep
 
+[![PyPI](https://img.shields.io/pypi/v/oncoprep)](https://pypi.org/project/oncoprep/)
+[![Python](https://img.shields.io/pypi/pyversions/oncoprep)](https://pypi.org/project/oncoprep/)
 [![Documentation](https://readthedocs.org/projects/oncoprep/badge/?version=latest)](https://oncoprep.readthedocs.io)
-[![License: GPL3.0](https://img.shields.io/badge/License-GPL3.0-yellow.svg)](LICENSE)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
+[![License](https://img.shields.io/pypi/l/oncoprep)](https://github.com/nikitas-k/oncoprep/blob/main/LICENSE)
+[![Downloads](https://img.shields.io/pypi/dm/oncoprep)](https://pypi.org/project/oncoprep/)
 
 
 A toolbox for preprocessing and analyzing neuro-oncology MRI using standardized, reproducible pipelines. The toolbox is centered on Nipype workflows, with fMRIprep-style preprocessing, automated tumor segmentation, and radiomics, plus utilities for DICOM→BIDS conversion, BIDS Apps execution, and report generation.
