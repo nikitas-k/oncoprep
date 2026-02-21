@@ -59,14 +59,8 @@ from .outputs import (
     init_anat_reports_wf,
     init_ds_anat_volumes_wf,
     init_ds_dseg_wf,
-    init_ds_fs_registration_wf,
-    init_ds_fs_segs_wf,
-    init_ds_grayord_metrics_wf,
     init_ds_mask_wf,
     init_ds_modalities_wf,
-    init_ds_surface_masks_wf,
-    init_ds_surface_metrics_wf,
-    init_ds_surfaces_wf,
     init_ds_template_registration_wf,
     init_ds_template_wf,
     init_ds_tpms_wf,
@@ -1436,7 +1430,7 @@ def _register_modality(moving, fixed, fixed_mask):
     registered_img = result.outputs.warped_image
     
     if registered_img is None or registered_img == Undefined:
-        raise RuntimeError(f"Registration failed: no output warped image produced")
+        raise RuntimeError("Registration failed: no output warped image produced")
 
     return str(registered_img)
 
@@ -1463,8 +1457,8 @@ def _deface_anatomical(in_file):
     import subprocess
 
     try:
-        import mri_deface
-        from mri_deface.deface import run as deface_run
+        import mri_deface  # noqa: F401
+        from mri_deface.deface import run as deface_run  # noqa: F401
     except ImportError:
         LOGGER.warning(
             "mri_deface not available. Install with: pip install mri-deface. "
@@ -1683,11 +1677,6 @@ def init_anat_template_wf(
 
     return workflow
 
-def _pop(inlist):
-    if isinstance(inlist, list):
-        return inlist[0]
-    return inlist
-
 def _probseg_fast2bids(inlist):
     """Reorder a list of probseg maps from FAST (CSF, WM, GM) to BIDS (GM, WM, CSF)"""
     return [inlist[2], inlist[1], inlist[0]]
@@ -1819,7 +1808,7 @@ def _run_hdbet(in_file: str, use_gpu: bool = True) -> tuple:
         cmd.extend(['-device', 'cpu'])
     
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        subprocess.run(cmd, capture_output=True, text=True, check=True)
     except FileNotFoundError:
         raise RuntimeError(
             "HD-BET not found. Install with: pip install hd-bet"
@@ -1838,7 +1827,7 @@ def _run_hdbet(in_file: str, use_gpu: bool = True) -> tuple:
             out_path.stem + '_mask.nii.gz'
         )
         if not mask_path.exists():
-            raise RuntimeError(f"HD-BET mask not found")
+            raise RuntimeError("HD-BET mask not found")
     
     return str(out_path), str(mask_path)
 
@@ -1951,12 +1940,12 @@ def _run_synthstrip(in_file: str) -> tuple:
     ]
     
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        subprocess.run(cmd, capture_output=True, text=True, check=True)
     except FileNotFoundError:
         # Try synthstrip as standalone command
         cmd[0] = 'synthstrip'
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            subprocess.run(cmd, capture_output=True, text=True, check=True)
         except FileNotFoundError:
             raise RuntimeError(
                 "SynthStrip not found. Install FreeSurfer or use: "

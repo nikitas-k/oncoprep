@@ -4,7 +4,7 @@ This module provides workflows for saving BraTS-specific outputs including
 tumor-related segmentations, metrics, and custom derivatives.
 """
 
-from typing import Dict, List, Optional
+from typing import List, Optional
 import json
 from pathlib import Path
 
@@ -486,8 +486,6 @@ def _save_tumor_metrics(tumor_metrics, source_files, output_dir):
         Path to saved metrics file
 
     """
-    import json
-    from pathlib import Path
 
     metrics_dir = Path(output_dir) / 'derivatives'
     metrics_dir.mkdir(parents=True, exist_ok=True)
@@ -520,8 +518,6 @@ def _compute_tumor_roi_stats(anatomical_image, tumor_mask, tumor_seg, source_fil
         Path to saved statistics file
 
     """
-    import json
-    from pathlib import Path
 
     import nibabel as nb
     import numpy as np
@@ -535,8 +531,7 @@ def _compute_tumor_roi_stats(anatomical_image, tumor_mask, tumor_seg, source_fil
         mask_img = nb.load(tumor_mask)
         mask_data = mask_img.get_fdata() > 0
 
-        seg_img = nb.load(tumor_seg)
-        seg_data = seg_img.get_fdata()
+        nb.load(tumor_seg)  # validate seg file is loadable
 
         voxel_vol = np.prod(anat_img.header.get_zooms()[:3])
 

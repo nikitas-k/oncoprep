@@ -3,7 +3,6 @@
 """Interfaces for manipulating GIFTI files."""
 
 import os
-from typing import Optional
 
 import nibabel as nb
 from nipype.interfaces.base import File, SimpleInterface, TraitedSpec, isdefined, traits

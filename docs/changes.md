@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.2.4 (2026-02-21)
+
+### Validation: Radiomic Feature Stability Analysis (D3)
+
+- **New `validation/radiomics_stability.py` module** — quantitative
+  assessment of micro-architectural signal fidelity across preprocessing
+  architectures (native-first vs atlas-first).  Implements IBSI-compliant
+  radiomic feature extraction comparison using:
+  - **Coefficient of Variation (CV)**: per-feature normalised dispersion
+    across subjects, $CV_i = (\sigma_i / \mu_i) \times 100\%$.
+  - **ICC(3,1)**: two-way mixed-effects intra-class correlation to isolate
+    variance introduced by the preprocessing architecture.
+  - **Stability classification**: features with ICC ≥ 0.85 and CV ≤ 10%
+    are classified as highly stable.
+  - **Paired Wilcoxon signed-rank test** on CV distributions with
+    Benjamini–Hochberg FDR correction for multiple comparisons.
+- **New statistical utilities in `validation/stats.py`**:
+  `coefficient_of_variation()`, `wilcoxon_signed_rank()`,
+  `benjamini_hochberg()`.
+- **Phase D extended with D3 endpoint** — `run_phase_d()` now accepts
+  `comparator_dir` to trigger radiomics stability analysis.  Results are
+  stored in `PhaseDResults.radiomics_stability` and serialised to a
+  separate `radiomics_stability_<dataset>.json`.
+- **Figure 6b** (`figure6b_radiomics_stability`): ICC vs CV scatter
+  coloured by IBSI feature class, per-class stacked bar (stable vs
+  unstable), and CV distribution box plots with Wilcoxon annotation.
+- **Table 5** (`table5_radiomics_stability`): per-class summary with
+  N features, % stable, median ICC, and median CV for both pipelines.
+- Updated `PHASE_D_ENDPOINTS` in `validation/config.py` to formally
+  describe D3.
+- `run_all.py` now passes `comparator_dir` through to Phase D.
+
+### Bug Fixes
+
+- Fixed `test_nninteractive::test_workflow_graph_is_connected` — updated
+  expected node count from 6 to 5 after `resample_seg_to_std` was removed
+  in the deferred registration refactor (0.2.3).
+
 ## 0.2.3 (2025-02-21)
 
 ### Pipeline Reordering: Deferred Template Registration

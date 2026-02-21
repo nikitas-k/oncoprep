@@ -7,9 +7,9 @@ including DICOM to BIDS conversion steps.
 
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
-from jinja2 import Environment, FileSystemLoader, Template
+from jinja2 import Template
 import nibabel as nb
 from nipype.interfaces import utility as niu
 from nipype.pipeline import engine as pe
@@ -171,7 +171,6 @@ def _generate_report_metrics(
 
     """
     import numpy as np
-    import nibabel as nb
     from oncoprep.utils.logging import get_logger
 
     logger = get_logger(__name__)

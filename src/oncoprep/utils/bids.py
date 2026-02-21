@@ -24,7 +24,7 @@
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from bids.layout import BIDSLayout
 from niworkflows.data import load as nwf_load

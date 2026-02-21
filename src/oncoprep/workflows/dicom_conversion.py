@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import re
-import shutil
 import subprocess
 from pathlib import Path
 from typing import Optional, Tuple
@@ -817,5 +816,5 @@ def create_bids_dataset_description(bids_dir: Path) -> Path:
     with open(desc_file, 'w') as f:
         json.dump(description, f, indent=4)
     
-    LOGGER.info(f"✓ Created BIDS dataset_description.json")
+    LOGGER.info("✓ Created BIDS dataset_description.json")
     return desc_file

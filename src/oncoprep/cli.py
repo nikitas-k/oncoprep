@@ -637,7 +637,6 @@ def build_opts(opts):
     """Trigger a new process that builds the workflow graph, based on the input options."""
     import gc
 
-    from nipype import config as ncfg
     from nipype import logging as nlogging
     
     set_start_method('forkserver', force=True)
@@ -703,7 +702,6 @@ def build_opts(opts):
         bids_dir = retval['bids_dir']
         output_dir = retval['output_dir']
         subject_session_list = retval['subject_session_list']
-        run_uuid = retval['run_uuid']
         retcode = retval['return_code']
     
     if oncoprep_wf is None:
@@ -783,7 +781,6 @@ def build_workflow(opts, retval):
 
     from bids.layout import BIDSLayout, Query
     from nipype import config as ncfg
-    from nipype import logging as nlogging
     from niworkflows.utils.bids import collect_participants
 
     from oncoprep.workflows.base import init_oncoprep_wf
@@ -830,7 +827,7 @@ def build_workflow(opts, retval):
         else:
             subject_session_list.append((subject, sessions))
     
-    bids_filters = json.loads(opts.bids_filter_file.read_text()) if opts.bids_filter_file else None
+    _bids_filters = json.loads(opts.bids_filter_file.read_text()) if opts.bids_filter_file else None  # noqa: F841
     
     # Load plugin settings
     if opts.use_plugin is not None:

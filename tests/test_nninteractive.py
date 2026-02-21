@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -17,14 +16,14 @@ except ImportError:
     HAS_NIBABEL = False
 
 try:
-    import torch
+    import torch  # noqa: F401
 
     HAS_TORCH = True
 except ImportError:
     HAS_TORCH = False
 
 try:
-    from nnInteractive.inference.inference_session import (
+    from nnInteractive.inference.inference_session import (  # noqa: F401
         nnInteractiveInferenceSession,
     )
 
@@ -184,7 +183,7 @@ class TestNNInteractiveWorkflow:
         # Nipype's write_graph internally validates connections
         # A simpler check: every node is reachable from inputnode
         graph = wf._graph
-        assert len(graph.nodes) == 6  # inputnode, seg, outputnode, convert_old, convert_new, resample_seg_to_std
+        assert len(graph.nodes) == 5  # inputnode, seg, outputnode, convert_old, convert_new
         assert len(graph.edges) >= 5  # at least 5 connections
 
 
@@ -352,7 +351,6 @@ class TestAnomalyDetection:
         )
 
         # Monkey-patch to intercept seed detection BEFORE model inference
-        captured = {}
         _orig_resolve = iface._resolve_model_dir
 
         def _fake_resolve():

@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import json
 import subprocess
-import tempfile
 from pathlib import Path
-from typing import Optional
 
 import pytest
 
@@ -467,7 +465,7 @@ class TestIntegrationWorkflow:
             from oncoprep.workflows.base import init_oncoprep_wf
 
             # Initialize workflow
-            workflow = init_oncoprep_wf(
+            init_oncoprep_wf(
                 output_dir=output_dir,
                 subject_session_list=[("001", ["01"])],
                 run_uuid="test-uuid",

@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 import json
-import shutil
 from pathlib import Path
 from typing import Optional
 
 import pytest
 from oncoprep.interfaces.bids import (
     validate_bids_dataset,
-    get_subjects_sessions,
 )
 from oncoprep.utils.logging import get_logger
 

@@ -124,7 +124,7 @@ def batch_convert(
     
     # Summary
     LOGGER.info(f"\n{'=' * 70}")
-    LOGGER.info(f"Batch Conversion Summary")
+    LOGGER.info("Batch Conversion Summary")
     LOGGER.info(f"{'=' * 70}")
     LOGGER.info(f"Total subjects: {results['total']}")
     LOGGER.info(f"Successful: {results['successful']}")

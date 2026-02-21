@@ -12,7 +12,6 @@ from oncoprep.workflows.dicom_conversion import (
     infer_modality_from_series,
     create_bids_dataset_description,
     create_bids_sidecar,
-    convert_subject_dicoms_to_bids,
 )
 
 
@@ -91,7 +90,6 @@ class TestBIDSDatasetDescription:
             
             # Create initial description
             desc_file = create_bids_dataset_description(bids_dir)
-            original_mtime = desc_file.stat().st_mtime
             
             # Try to create again
             desc_file2 = create_bids_dataset_description(bids_dir)

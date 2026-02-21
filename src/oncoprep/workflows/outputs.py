@@ -535,7 +535,7 @@ def init_ds_modalities_wf(
         str or None
             Path to saved file, or None if input was empty
         """
-        from nipype.interfaces.base import Undefined, isdefined
+        from nipype.interfaces.base import isdefined
         # Check for various "empty" conditions
         if in_file is None:
             return None

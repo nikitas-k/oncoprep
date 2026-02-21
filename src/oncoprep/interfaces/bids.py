@@ -400,13 +400,11 @@ def get_subjects_sessions(
 
 
 # Custom Nipype interfaces for OncoPrep BIDS handling
-from nipype.interfaces.base import (
+from nipype.interfaces.base import (  # noqa: E402
     BaseInterfaceInputSpec,
     DynamicTraitedSpec,
     SimpleInterface,
-    TraitedSpec,
     traits,
-    isdefined,
     File,
     InputMultiObject,
 )
