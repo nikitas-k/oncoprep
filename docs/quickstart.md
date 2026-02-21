@@ -28,6 +28,17 @@ This runs the full anatomical preprocessing pipeline:
 6. Normalizes to MNI152NLin2009cAsym template space
 7. Writes BIDS derivative outputs
 
+When segmentation is enabled (`--run-segmentation`), template registration
+is **deferred** until after the tumor mask is available, so it can be used
+as a cost-function exclusion mask for ANTs SyN. The pipeline becomes:
+
+1. Anatomical preprocessing (conform, co-register, skull-strip, N4)
+2. Tumor segmentation (native space)
+3. Radiomics extraction (native-space mask, optional)
+4. Template registration with dilated tumor mask as exclusion region
+5. VASARI feature extraction (template-space mask, optional)
+6. Writes BIDS derivative outputs
+
 ## 3. Run with quality control
 
 > **Note:** MRIQC integration is temporarily disabled in this release.

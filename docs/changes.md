@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.2.3 (2025-02-21)
+
+### Pipeline Reordering: Deferred Template Registration
+
+- **Template registration is now deferred until after segmentation** when
+  `--run-segmentation` is enabled.  The whole-tumor mask (binarized, dilated
+  by 4 voxels with a 6-connected structuring element) is passed to ANTs SyN
+  as a cost-function exclusion mask (`-x`), preventing pathological tissue
+  from distorting the diffeomorphic warp.  This preserves global geometry
+  for atlas-based analyses (VASARI) and template-space derivatives.
+- **Tumor segmentation no longer resamples to template space internally.**
+  The `tumor_seg_std` output has been removed from both `init_anat_seg_wf()`
+  and `init_nninteractive_seg_wf()`.  Template-space resampling is now
+  performed in `base.py` after the deferred registration, using the
+  topology-preserving transform.
+- **VASARI now receives the template-space segmentation from the deferred
+  registration block** (`resample_seg_to_std` in `base.py`) instead of from
+  the segmentation workflow's `outputnode.tumor_seg_std`.
+- **Radiomics operates on the native-space segmentation**, consistent with
+  Pati et al. (*AJNR* 2024) — intensity normalization and SUSAN denoising
+  are applied inside the radiomics workflow, after segmentation.
+- Added `skip_registration` parameter to `init_anat_preproc_wf()` and
+  `init_anat_fit_wf()`.  When `True`, Stage 5 (template registration) is
+  skipped entirely, and buffer nodes emit empty lists for transforms.
+- Added `_create_dilated_tumor_mask()` helper function in `base.py` for
+  generating the cost-function exclusion mask.
+
+### Pipeline Order (with segmentation enabled)
+
+1. Anatomical preprocessing (N4, skull-strip, co-registration) — *no
+   template registration*
+2. Tumor segmentation (native space)
+3. Radiomics feature extraction (native-space mask, with histogram
+   normalization + SUSAN denoising)
+4. Deferred template registration (ANTs SyN with dilated tumor mask as
+   cost-function exclusion)
+5. Resample tumor segmentation to template space (nearest-neighbor)
+6. VASARI feature extraction (template-space mask)
+
 ## 0.2.2 (2025-02-19)
 
 ### Features
@@ -37,11 +76,11 @@
   (`SUSANDenoising` interface) applied after histogram normalization in
   the radiomics workflow.  Edge-preserving smoothing reduces noise while
   maintaining tumor boundary detail.
-- **Template-space tumor segmentation resampling** — both segmentation
-  backends (nnInteractive and Docker ensemble) now resample the native-space
-  tumor segmentation into the chosen template space (MNI152 or SRI24) using
-  ANTs `ApplyTransforms` with nearest-neighbor interpolation.  The resampled
-  segmentation is exposed as `outputnode.tumor_seg_std`.
+- **Template-space tumor segmentation resampling** — the native-space
+  tumor segmentation is resampled into the chosen template space (MNI152 or
+  SRI24) using ANTs `ApplyTransforms` with nearest-neighbor interpolation.
+  *Note: as of 0.2.3, this resampling moved from the segmentation workflows
+  to `base.py` as part of the deferred registration block.*
 - **VASARI atlas space selection** — `init_vasari_wf()` accepts an
   `atlas_space` parameter (`'mni152'`, `'MNI152NLin2009cAsym'`, or `'SRI24'`)
   and passes the pre-resampled segmentation directly to vasari-auto, skipping

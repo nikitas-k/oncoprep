@@ -15,9 +15,9 @@ Both OncoPrep and vasari-auto bundle anatomical atlas masks for MNI152 and
 SRI24 template spaces.  vasari-auto accepts a `template_space` parameter
 (default `'mni152'`) and resolves atlas paths from its own package data.
 The tumor segmentation is automatically resampled from native T1w space into
-the chosen template space (using the `anat2std_xfm` from the anatomical
-workflow) **before** being passed to vasari-auto, so no additional ANTs SyN
-registration is performed at VASARI time.
+the chosen template space (using the `anat2std_xfm` from the deferred
+template registration) **before** being passed to vasari-auto, so no additional
+ANTs SyN registration is performed at VASARI time.
 
 :::{note}
 **This is NOT a clinical tool.** Automated VASARI reports are intended for
@@ -43,9 +43,9 @@ supported.
 
 VASARI-auto derives the following features from the segmentation mask by
 evaluating its overlap with anatomical atlas ROIs in template space.  Because
-OncoPrep pre-resamples the segmentation into the template space during the
-segmentation workflow, vasari-auto skips its internal ANTs SyN registration
-and uses the OncoPrep-bundled atlas masks directly:
+Because OncoPrep resamples the segmentation into the template space during the
+deferred registration block in `base.py`, vasari-auto skips its internal ANTs
+SyN registration and uses the OncoPrep-bundled atlas masks directly:
 
 | Feature | Description | Method |
 |---------|-------------|--------|
@@ -145,11 +145,18 @@ report, showing a summary table of all VASARI features.
 Before VASARI feature extraction, the native-space tumor segmentation is
 resampled into the chosen template space using ANTs `ApplyTransforms` with
 **nearest-neighbor interpolation** (preserving discrete labels).  This step
-happens inside the segmentation workflow (`init_anat_seg_wf` or
-`init_nninteractive_seg_wf`), not in the VASARI workflow itself.
+happens in `base.py` as part of the **deferred template registration** block,
+not inside the segmentation workflow.
+
+When `--run-segmentation` is enabled, template registration is deferred until
+after the tumor mask is available.  The whole-tumor mask is dilated by 4 voxels
+and used as a cost-function exclusion region (`-x`) for ANTs SyN, preventing
+pathological tissue from distorting the diffeomorphic warp.  The resulting
+transform is then used to resample the native-space segmentation into the
+template space.
 
 The transform used is `anat2std_xfm` (native → template) produced by the
-anatomical preprocessing workflow.  The reference image is the bundled
+deferred registration workflow.  The reference image is the bundled
 template brain for the chosen atlas space:
 
 | Atlas Space | Reference Image |
@@ -157,8 +164,8 @@ template brain for the chosen atlas space:
 | `mni152` / `MNI152NLin2009cAsym` / `MNI152NLin6Asym` | `MNI152_T1_1mm_brain.nii.gz` |
 | `sri24` / `SRI24` | `MNI152_in_SRI24_T1_1mm_brain.nii.gz` |
 
-The resampled segmentation is available on the segmentation workflow's
-`outputnode.tumor_seg_std` and is passed directly to the VASARI workflow.
+The resampled segmentation is produced by the deferred registration block in
+`base.py` and is passed directly to the VASARI workflow.
 
 ## Python API
 
@@ -269,8 +276,9 @@ pip install "vasari-auto @ git+https://github.com/nikitas-k/vasari-auto.git"
 
 `vasari-auto` ships its own atlas masks and resolves them from package data
 (no CWD dependency).  It depends on `antspyx`, `nibabel`, `scipy`,
-`scikit-image`, `pandas`, and `seaborn`.  When OncoPrep pre-resamples the
-segmentation to template space, the `antspyx` ANTs SyN registration step
+`scikit-image`, `pandas`, and `seaborn`.  When OncoPrep resamples the
+segmentation to template space (via the deferred registration block),
+the `antspyx` ANTs SyN registration step
 inside vasari-auto is bypassed entirely.
 
 ### Using vasari-auto standalone

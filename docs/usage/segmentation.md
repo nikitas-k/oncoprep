@@ -306,15 +306,23 @@ for managing model images.
 ## Template-Space Resampling
 
 Both segmentation backends (nnInteractive and Docker ensemble) produce tumor
-segmentation masks in the **native T1w space**.  When a downstream workflow
-requires the segmentation in a standard template space (e.g. VASARI feature
-extraction), the segmentation workflow automatically resamples the native-space
-labels into the template using the `anat2std_xfm` transform from the
-anatomical preprocessing workflow.
+segmentation masks in the **native T1w space**.  Template-space resampling is
+performed **after** the deferred template registration in `base.py`, not
+inside the segmentation workflow itself.
 
-The resampling is performed with ANTs `ApplyTransforms` using
-**nearest-neighbor interpolation** (to preserve discrete label values) and is
-exposed on the segmentation workflow's `outputnode` as `tumor_seg_std`.
+When `--run-segmentation` is enabled, OncoPrep defers template registration
+until after segmentation completes:
+
+1. The whole-tumor mask is binarized and **dilated by 4 voxels** (6-connected
+   structuring element).
+2. The dilated mask is fed to ANTs SyN as a **cost-function exclusion mask**
+   (`-x`), so pathological tissue does not distort the diffeomorphic warp.
+3. The native-space tumor segmentation is then resampled into the template
+   using the resulting transform with **nearest-neighbor interpolation**
+   (preserving discrete label values).
+
+The template-space segmentation is used for downstream atlas-based analyses
+(VASARI feature extraction).
 
 ### Supported template spaces
 
@@ -330,5 +338,9 @@ exposed on the segmentation workflow's `outputnode` as `tumor_seg_std`.
 |-------|-------------|
 | `tumor_seg` | Multi-label segmentation in new BraTS convention (native space) |
 | `tumor_seg_old` | Multi-label segmentation in old BraTS convention (native space) |
-| `tumor_seg_std` | Multi-label segmentation in old BraTS convention, **resampled to template space** |
 | `tumor_mask` | Binary whole-tumor mask (native space) |
+
+Template-space resampling is handled by the deferred registration block in
+`base.py`, not by the segmentation workflow itself.  The resampled
+segmentation is connected directly to the VASARI workflow's
+`inputnode.tumor_seg_std`.

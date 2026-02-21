@@ -72,6 +72,11 @@ This will:
 5. **Normalize** to MNI152NLin2009cAsym template space
 6. Write all outputs as BIDS derivatives
 
+When segmentation is enabled (Step 3 below), template normalization is
+**deferred** until after the tumor mask is available.  The dilated
+whole-tumor mask is used as a cost-function exclusion region (`-x`) for
+ANTs SyN, preventing pathological tissue from distorting the warp.
+
 :::{note}
 Processing a single subject typically takes 15–30 minutes on 4 cores.
 :::
