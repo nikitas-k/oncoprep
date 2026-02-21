@@ -791,7 +791,7 @@ def build_workflow(opts, retval):
     logger = logging.getLogger('nipype.workflow')
     
     INIT_MSG = """
-    Running OncoPrep version 0.1.0:
+    Running OncoPrep version {version} with the following configuration:
       * BIDS dataset path: {bids_dir}.
       * Participants & Sessions: {subject_session_list}.
       * Run identifier: {uuid}.
@@ -927,9 +927,12 @@ def build_workflow(opts, retval):
         # Fall through to build the workflow below so visit_desc() works
     
     if not opts.reports_only:
+        from oncoprep import __version__
+
         logger.log(
             25,
             INIT_MSG.format(
+                version=__version__,
                 bids_dir=bids_dir,
                 subject_session_list=_pprint_subses(subject_session_list),
                 uuid=run_uuid,
